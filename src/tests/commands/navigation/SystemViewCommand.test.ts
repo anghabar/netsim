@@ -17,7 +17,7 @@ describe('SystemViewCommand', () => {
         const context = createMockContext(device, 'system-view');
         const result = command.execute(context);
         expect(device.cliState.view).toBe('system-view');
-        expect(result.output[1]).toContain('simulado');
+        expect(result.output[1]).toContain('simulated');
     });
 
     it('should handle "sys" alias', () => {

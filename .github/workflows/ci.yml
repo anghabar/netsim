@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# Read-only token, no secrets, no deployment.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ESLint
+        # Advisory for now: the existing sources do not pass
+        # `--max-warnings 0` yet. Remove `continue-on-error` as soon as
+        # `npm run lint` is clean on main so that this step blocks again.
+        continue-on-error: true
+        run: npm run lint
+
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # The generated WebAssembly package is not needed here: the bridge
+      # imports it without type declarations, so the result of the type check
+      # is the same with or without a wasm-pack build.
+      - name: Type check the application
+        run: npm run typecheck
+      - name: Type check the tests and tool configuration
+        run: npm run typecheck:tests
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      # The test setup stubs the WebAssembly bridge and blocks network APIs,
+      # so the suites run offline and without a wasm-pack build.
+      - name: Run Vitest
+        run: npm test
+
+  rust:
+    name: Rust core tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: wasm-core
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show the Rust toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Run cargo test
+        run: cargo test --locked
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Reads package-lock.json only: nothing is installed and no package
+      # script runs in this job.
+      - name: Audit dependencies
+        # Advisory for now: it becomes blocking once the dependencies are updated.
+        continue-on-error: true
+        run: npm audit --audit-level=high
