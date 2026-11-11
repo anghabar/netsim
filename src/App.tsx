@@ -1,4 +1,4 @@
-import { useEffect, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useMemo, Suspense } from 'react';
 import 'reactflow/dist/style.css';
 
 // Stores
@@ -13,6 +13,8 @@ import Sidebar from './components/UI/Sidebar';
 import SimulatorCanvas from './components/UI/SimulatorCanvas';
 import { Toasts } from './components/Toasts';
 import { LabsPanelEnhanced } from './features/labs/components/LabsPanelEnhanced';
+import { ToolsMenu } from './components/tools/ToolsMenu';
+import { FeaturePanelHost } from './components/tools/FeaturePanelHost';
 
 // Icons
 import { LayoutGrid, Map as MapIcon } from 'lucide-react';
@@ -59,8 +61,11 @@ function SimulatorWrapper() {
 
 function Simulator() {
   const { activeUser, mode } = useAuthStore();
-  // @ts-ignore
-  const { activeConsoleId, viewMode, setViewMode, showLabsPanel, setShowLabsPanel } = useNetworkStore();
+  const activeConsoleId = useNetworkStore((state) => state.activeConsoleId);
+  const viewMode = useNetworkStore((state) => state.viewMode);
+  const setViewMode = useNetworkStore((state) => state.setViewMode);
+  const showLabsPanel = useNetworkStore((state) => state.showLabsPanel);
+  const setShowLabsPanel = useNetworkStore((state) => state.setShowLabsPanel);
 
   const uiState = useSimulatorState();
   const topologyActions = useTopologyActions();
@@ -96,9 +101,7 @@ function Simulator() {
       {/* Main Content Area Wrapper */}
       <main className="flex-1 relative flex flex-col bg-transparent overflow-hidden ml-4 rounded-l-3xl shadow-2xl border-l border-white/5 backdrop-blur-sm">
 
-        {/* ====================================================== */}
-        {/* PREMIUM CONTROL HUB (Floating Top-Center) */}
-        {/* ====================================================== */}
+        {/* Control hub (floating, top centre) */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[4000] flex items-center gap-2 glass-panel bg-black/45 border-white/[0.1] p-1.5 rounded-[1.6rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)] backdrop-blur-3xl animate-fade-in-down ring-1 ring-white/10">
 
           {/* Topology Tools */}
@@ -128,6 +131,9 @@ function Simulator() {
               <span className="hidden lg:inline">Rack</span>
             </button>
           </div>
+
+          {/* Feature panels */}
+          <ToolsMenu />
         </div>
 
         {/* Content Views */}
@@ -142,7 +148,7 @@ function Simulator() {
               edges={topologyActions.edges}
               onNodesChange={topologyActions.onNodesChange}
               onEdgeDoubleClick={topologyActions.onEdgeDoubleClick}
-              onNodeDoubleClick={(_e: any, node: any) => topologyActions.handleOpenDeviceConsole(node.id)}
+              onNodeDoubleClick={(_event: unknown, node: { id: string }) => topologyActions.handleOpenDeviceConsole(node.id)}
               shouldRenderMiniMap={shouldRenderMiniMap}
               showMiniMap={uiState.showMiniMap}
               devices={topologyActions.devices}
@@ -161,6 +167,8 @@ function Simulator() {
         isOpen={showLabsPanel}
         onClose={() => setShowLabsPanel(false)}
       />
+
+      <FeaturePanelHost />
     </div>
   );
 }

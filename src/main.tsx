@@ -1,20 +1,18 @@
-import ReactDOM from 'react-dom/client'
+import ReactDOM from 'react-dom/client';
 import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import './index.css'
+import './index.css';
 import 'reactflow/dist/style.css';
 
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import type { NetworkCable, NetworkDevice } from './types/NetworkTypes';
 import { useAuthStore } from './store/useAuthStore';
 import { useNetworkStore } from './store/useNetworkStore';
-import { wasmSetTopology } from './wasm/wasmBridge';
+import { attachTopologyAutosave } from './store/topologyAutosave';
+import { initWasm, wasmSetTopology } from './wasm/wasmBridge';
 
 // Lazy load route components for code splitting
 const App = lazy(() => import('./App.tsx'));
-// const AdminApp = lazy(() => import('./admin/AdminApp').then(m => ({ default: m.AdminApp })));
-// const ChatPage = lazy(() => import('./pages/ChatPage').then(m => ({ default: m.ChatPage })));
 
-// Loading fallback component
 const PageLoader = () => (
   <div className="flex items-center justify-center h-screen w-screen bg-[#0b0c0d]">
     <div className="flex flex-col items-center gap-4">
@@ -24,40 +22,52 @@ const PageLoader = () => (
   </div>
 );
 
-import { initWasm } from './wasm/wasmBridge';
+const pushTopology = (devices: NetworkDevice[], cables: NetworkCable[]): void => {
+  try {
+    wasmSetTopology(devices, cables);
+  } catch {
+    // A topology the engine cannot read must not break the store update that triggered the sync.
+  }
+};
 
 const RootHandlers = () => {
   const { initListener } = useAuthStore();
 
   useEffect(() => {
     initListener();
-    initWasm().then(() => {
-      const initialStore = useNetworkStore.getState();
-      wasmSetTopology(initialStore.devices, initialStore.cables);
 
-      // Subscribe to topology changes
-      useNetworkStore.subscribe((state) => {
-        wasmSetTopology(state.devices, state.cables);
+    // Start-up side effects live here, not in the store module.
+    useNetworkStore.getState().initialize();
+    const detachAutosave = attachTopologyAutosave(useNetworkStore);
+
+    let cancelled = false;
+    let detachEngineSync: (() => void) | null = null;
+    initWasm()
+      .then(() => {
+        if (cancelled) return;
+        const initial = useNetworkStore.getState();
+        pushTopology(initial.devices, initial.cables);
+        detachEngineSync = useNetworkStore.subscribe((state, previous) => {
+          if (state.devices !== previous.devices || state.cables !== previous.cables) {
+            pushTopology(state.devices, state.cables);
+          }
+        });
+      })
+      .catch(() => {
+        // initWasm reports its own failure; the TypeScript CLI layer keeps working without the engine.
       });
-    }).catch(console.error);
 
-    // Recovery for when OAuth redirects to root instead of /admin
-    if (window.location.pathname === '/' && window.location.hash.includes('access_token') && localStorage.getItem('netsim-redirect-target') === 'admin') {
-      localStorage.removeItem('netsim-redirect-target');
-      window.location.href = '/admin' + window.location.hash;
-    }
+    return () => {
+      cancelled = true;
+      detachAutosave();
+      if (detachEngineSync) detachEngineSync();
+    };
   }, [initListener]);
 
   return (
     <BrowserRouter>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* <Route path="/admin/*" element={<AdminApp />} /> */}
-          {/* <Route path="/chat" element={
-            <ProtectedRoute>
-              <ChatPage />
-            </ProtectedRoute>
-          } /> */}
           <Route path="/*" element={<App />} />
         </Routes>
       </Suspense>
@@ -65,6 +75,7 @@ const RootHandlers = () => {
   );
 };
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <RootHandlers />
-)
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(<RootHandlers />);
+}

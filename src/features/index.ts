@@ -3,11 +3,10 @@
 
 // Sidebar features
 export { SidebarCard, SidebarItem, CatalogItem } from './sidebar/components';
-// export { SidebarQuickTab } from './sidebar/tabs';
-
-// Workspace features (Removed in OSS)
-// export { useWorkspaceSync, useSnapshots, useCollaboration } from './workspace/hooks';
 
 // Labs features
 export { LabsPanelEnhanced, useLabsState } from './labs';
-export { };
+
+// Feature contract (panels and CLI commands contributed by feature folders)
+export { listFeatureUi, registerFeatureCommands } from './featureRegistry';
+export type { FeaturePanelProps, FeatureUiDefinition } from './featureRegistry';
