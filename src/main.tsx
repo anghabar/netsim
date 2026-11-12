@@ -7,7 +7,9 @@ import 'reactflow/dist/style.css';
 import type { NetworkCable, NetworkDevice } from './types/NetworkTypes';
 import { useAuthStore } from './store/useAuthStore';
 import { useNetworkStore } from './store/useNetworkStore';
-import { attachTopologyAutosave } from './store/topologyAutosave';
+import { attachTopologyAutosave, type AutosaveError } from './store/topologyAutosave';
+import { useUiStore } from './store/useUiStore';
+import { notifyAutosaveError } from './store/autosaveNotice';
 import { initWasm, wasmSetTopology } from './wasm/wasmBridge';
 
 // Lazy load route components for code splitting
@@ -37,8 +39,9 @@ const RootHandlers = () => {
     initListener();
 
     // Start-up side effects live here, not in the store module.
-    useNetworkStore.getState().initialize();
-    const detachAutosave = attachTopologyAutosave(useNetworkStore);
+    const notify = (error: AutosaveError): void => notifyAutosaveError(error, useUiStore.getState().addToast);
+    useNetworkStore.getState().initialize(notify);
+    const detachAutosave = attachTopologyAutosave(useNetworkStore, { onError: notify });
 
     let cancelled = false;
     let detachEngineSync: (() => void) | null = null;

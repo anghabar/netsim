@@ -14,7 +14,7 @@ import { wasmSetTopology } from '../../wasm/wasmBridge';
 import { err, isRecord, ok, type Result } from '../../utils/guards';
 import { cryptoIdSource, mathRandomSource, type IdSource, type RandomSource } from '../../utils/runtime';
 import { isModelLabel, parseTopology, withLink } from '../../utils/topology/topologyGuards';
-import { isLabInProgress, loadTopology } from '../topologyAutosave';
+import { isLabInProgress, loadTopology, type AutosaveError } from '../topologyAutosave';
 import type { NetworkState } from '../useNetworkStore';
 
 // Placeholders kept for the CLI layer; the routing engine recomputes these.
@@ -31,7 +31,7 @@ export interface TopologySlice {
   selectedPort: { deviceId: string; portId: string } | null;
 
   /** Restores the locally autosaved topology, if a valid one exists. */
-  initialize: () => void;
+  initialize: (onError?: (error: AutosaveError) => void) => void;
   addDevice: (model: SwitchModel, position?: { x: number; y: number }) => NetworkDevice;
   /** Removes a device together with its cables. */
   removeDevice: (id: string) => void;
@@ -177,8 +177,8 @@ export const createTopologySlice: StateCreator<NetworkState, [], [], TopologySli
   presenceEntries: [],
   workspaceSecurity: { roles: {} },
 
-  initialize: () => {
-    const saved = loadTopology(get().runtime.storage);
+  initialize: (onError) => {
+    const saved = loadTopology(get().runtime.storage, onError);
     if (!saved.ok) return;
     set({ devices: saved.value.devices, cables: saved.value.cables });
   },

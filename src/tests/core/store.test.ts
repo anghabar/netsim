@@ -16,6 +16,8 @@ import {
   TOPOLOGY_AUTOSAVE_SLOT,
   TOPOLOGY_CORRUPT_SLOT,
 } from '../../store/topologyAutosave';
+import { autosaveErrorMessage, notifyAutosaveError } from '../../store/autosaveNotice';
+import { createMemoryStorage } from '../../utils/storage/keyValueStorage';
 import { createTestStore, linkedPair, TEST_EPOCH_MS } from '../helpers/createTestStore';
 
 const labSession = (completedAt?: string): LabSession => ({
@@ -144,6 +146,98 @@ describe('removeDevice', () => {
 });
 
 describe('topology autosave', () => {
+  it('reports a save error once until a save succeeds again', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const onError = vi.fn();
+    const detach = attachTopologyAutosave(store, { delayMs: 50, onError });
+    const { a, b, cable } = linkedPair();
+    const bad = { ...a, hostname: 'h'.repeat(500) };
+    store.setState({ devices: [bad, b], cables: [cable] });
+    vi.advanceTimersByTime(50);
+    store.setState({ devices: [{ ...bad, hostname: 'i'.repeat(500) }, b] });
+    vi.advanceTimersByTime(50);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('invalid-topology');
+    store.setState({ devices: [a, b] });
+    vi.advanceTimersByTime(50);
+    expect(onError).toHaveBeenCalledTimes(1);
+    store.setState({ devices: [bad, b] });
+    vi.advanceTimersByTime(50);
+    expect(onError).toHaveBeenCalledTimes(2);
+    detach();
+  });
+
+  it('turns an autosave error into an error toast', () => {
+    const addToast = vi.fn();
+    notifyAutosaveError('invalid-topology', addToast);
+    expect(addToast).toHaveBeenCalledTimes(1);
+    expect(addToast.mock.calls[0][0]).toBe(autosaveErrorMessage('invalid-topology'));
+    expect(addToast.mock.calls[0][1]).toBe('error');
+  });
+
+  it('never overwrites the saved topology with a completed lab topology', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const { a, b, cable } = linkedPair();
+    expect(saveTopology(storage, [a, b], [cable]).ok).toBe(true);
+    const mine = storage.read(TOPOLOGY_AUTOSAVE_SLOT);
+    store.getState().initialize();
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+
+    store.setState({ devices: [], cables: [], currentLabSession: labSession('2026-01-01T01:00:00.000Z') });
+    store.getState().addDevice('PC');
+    vi.advanceTimersByTime(500);
+    expect(storage.read(TOPOLOGY_AUTOSAVE_SLOT)).toBe(mine);
+    detach();
+  });
+
+  it('restores the user topology on exit and resumes autosave on it', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const { a, b, cable } = linkedPair();
+    expect(saveTopology(storage, [a, b], [cable]).ok).toBe(true);
+    store.getState().initialize();
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+
+    store.setState({ devices: [], cables: [], currentLabSession: labSession('2026-01-01T01:00:00.000Z') });
+    store.getState().addDevice('PC');
+    store.getState().resetLab();
+    vi.advanceTimersByTime(500);
+    expect(store.getState().currentLabSession).toBeNull();
+    expect(store.getState().devices.map((d) => d.id)).toEqual([a.id, b.id]);
+    expect(store.getState().cables).toHaveLength(1);
+    const unchanged = loadTopology(storage);
+    expect(unchanged.ok && unchanged.value.devices).toHaveLength(2);
+
+    store.getState().addDevice('PC');
+    vi.advanceTimersByTime(50);
+    const after = loadTopology(storage);
+    expect(after.ok && after.value.devices).toHaveLength(3);
+    detach();
+  });
+
+  it('exits to an empty topology and leaves the slot empty until the user edits', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+
+    store.setState({ currentLabSession: labSession() });
+    store.getState().addDevice('PC');
+    store.getState().resetLab();
+    vi.advanceTimersByTime(500);
+    expect(store.getState().devices).toEqual([]);
+    expect(loadTopology(storage)).toEqual({ ok: false, error: 'empty' });
+
+    store.getState().addDevice('PC');
+    vi.advanceTimersByTime(50);
+    expect(loadTopology(storage).ok).toBe(true);
+    detach();
+  });
+
   it('saves after the delay, restores through initialize and stops when detached', () => {
     vi.useFakeTimers();
     const store = createTestStore();
@@ -217,10 +311,22 @@ describe('topology autosave', () => {
 
     const detach = attachTopologyAutosave(store, { delayMs: 50 });
     store.getState().addDevice('PC');
+    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBe(unreadable);
     vi.advanceTimersByTime(50);
     detach();
     expect(storage.read(TOPOLOGY_AUTOSAVE_SLOT)).not.toBe(unreadable);
-    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBe(unreadable);
+    // Cleared only once a valid topology has been saved again.
+    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBeNull();
+  });
+
+  it('reports a failed write of the second slot', () => {
+    const onError = vi.fn();
+    const unreadable = '{"version":1,"devices":[{"id":"x"}],"cables":[]}';
+    const big = createMemoryStorage();
+    big.write(TOPOLOGY_AUTOSAVE_SLOT, unreadable);
+    const failing: typeof big = { ...big, write: () => ({ ok: false, error: 'quota-exceeded' }) };
+    expect(loadTopology(failing, onError)).toEqual({ ok: false, error: 'corrupt' });
+    expect(onError).toHaveBeenCalledWith('quota-exceeded');
   });
 
   it('round-trips a valid topology and leaves the second slot empty', () => {
