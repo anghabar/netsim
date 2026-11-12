@@ -162,7 +162,14 @@ export const createLabsSlice: StateCreator<NetworkState, [], [], LabsSlice> = (s
       if (previous === null) {
         const { devices, cables, runtime } = get();
         const hasSave = loadTopology(runtime.storage).ok;
-        if (hasSave || devices.length > 0 || cables.length > 0) saveTopology(runtime.storage, devices, cables);
+        if (hasSave || devices.length > 0 || cables.length > 0) {
+          // If the user's topology cannot be saved, the lab would replace the only copy: do not start it.
+          const saved = saveTopology(runtime.storage, devices, cables);
+          if (!saved.ok) {
+            get().reportSaveError(saved.error);
+            return;
+          }
+        }
       }
       if (previous !== null) set({ currentLabSession: null });
       const replaced = get().replaceTopology(built);

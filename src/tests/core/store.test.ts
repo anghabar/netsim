@@ -359,3 +359,100 @@ describe('topology autosave', () => {
     expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBeNull();
   });
 });
+
+describe('lab start and replace with autosave', () => {
+  it('does not start a lab when the pre-lab save fails, and reports the error', () => {
+    const base = createMemoryStorage();
+    let failing = false;
+    const storage: typeof base = {
+      ...base,
+      write: (slot, value) => (failing ? { ok: false, error: 'quota-exceeded' } : base.write(slot, value)),
+    };
+    const store = createTestStore({ storage });
+    const onError = vi.fn();
+    store.getState().initialize(onError);
+    store.getState().loadLabs();
+    store.getState().addDevice('PC');
+    const before = store.getState().devices;
+    failing = true;
+
+    store.getState().startLab(store.getState().availableLabs[0].id);
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith('quota-exceeded');
+    expect(store.getState().currentLabSession).toBeNull();
+    expect(store.getState().devices).toBe(before);
+  });
+
+  it('saves the topology that replaces a completed lab and keeps it after resetLab', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+    const { a, b, cable } = linkedPair();
+    store.setState({ currentLabSession: labSession('2026-01-01T01:00:00.000Z') });
+
+    expect(store.getState().replaceTopology({ devices: [a, b], cables: [cable] }).ok).toBe(true);
+    expect(store.getState().currentLabSession).toBeNull();
+    const saved = loadTopology(storage);
+    expect(saved.ok && saved.value.devices.map((d) => d.id)).toEqual([a.id, b.id]);
+
+    store.getState().resetLab();
+    expect(store.getState().devices.map((d) => d.id)).toEqual([a.id, b.id]);
+
+    store.getState().addDevice('PC');
+    vi.advanceTimersByTime(50);
+    const after = loadTopology(storage);
+    expect(after.ok && after.value.devices).toHaveLength(3);
+    detach();
+  });
+
+  it('saves a replacement without cables made after a completed lab', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+    const { a } = linkedPair();
+    store.setState({ currentLabSession: labSession('2026-01-01T01:00:00.000Z') });
+    expect(store.getState().replaceTopology({ devices: [a], cables: [] }).ok).toBe(true);
+    vi.advanceTimersByTime(500);
+    const saved = loadTopology(storage);
+    expect(saved.ok && saved.value.devices.map((d) => d.id)).toEqual([a.id]);
+    detach();
+  });
+
+  it('reports a failed save when a replace closes a completed lab', () => {
+    const base = createMemoryStorage();
+    const storage: typeof base = { ...base, write: () => ({ ok: false, error: 'unavailable' }) };
+    const store = createTestStore({ storage });
+    const onError = vi.fn();
+    store.getState().initialize(onError);
+    const { a, b, cable } = linkedPair();
+    store.setState({ currentLabSession: labSession('2026-01-01T01:00:00.000Z') });
+    expect(store.getState().replaceTopology({ devices: [a, b], cables: [cable] }).ok).toBe(true);
+    expect(onError).toHaveBeenCalledWith('unavailable');
+  });
+
+  it('refuses a replace during a lab in progress and leaves session, canvas and save untouched', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+    const { a, b, cable } = linkedPair();
+    expect(saveTopology(storage, [a, b], [cable]).ok).toBe(true);
+    const mine = storage.read(TOPOLOGY_AUTOSAVE_SLOT);
+    const session = labSession();
+    store.setState({ currentLabSession: session });
+    const devices = store.getState().devices;
+
+    expect(store.getState().replaceTopology({ devices: [a], cables: [] })).toEqual({
+      ok: false,
+      error: 'lab-in-progress',
+    });
+    vi.advanceTimersByTime(500);
+    expect(store.getState().currentLabSession).toBe(session);
+    expect(store.getState().devices).toBe(devices);
+    expect(storage.read(TOPOLOGY_AUTOSAVE_SLOT)).toBe(mine);
+    detach();
+  });
+});
