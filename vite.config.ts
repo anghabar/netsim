@@ -57,11 +57,6 @@ export default defineConfig({
             return 'reactflow';
           }
 
-          // PDF.js
-          if (id.includes('pdfjs-dist')) {
-            return 'pdfjs';
-          }
-
           // Monaco Editor
           if (id.includes('@monaco-editor/react') || id.includes('monaco-editor')) {
             return 'monaco';
