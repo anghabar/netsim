@@ -52,7 +52,7 @@ export const lab1: Lab = {
                     type: 'config',
                     description: 'VLANs 10 and 20 must exist',
                     check: (context: LabValidationContext) => {
-                        const switchDevice = context.devices.find(d => d.model.includes('Switch'));
+                        const switchDevice = context.devices.find(d => d.type === 'Switch');
                         return switchDevice ? switchDevice.vlans.includes(10) && switchDevice.vlans.includes(20) : false;
                     },
                     errorMessage: 'VLANs 10 and 20 are not configured correctly'
@@ -92,7 +92,7 @@ export const lab1: Lab = {
                     type: 'config',
                     description: 'Ports must be in access mode with correct VLANs',
                     check: (context: LabValidationContext) => {
-                        const switchDevice = context.devices.find(d => d.model.includes('Switch'));
+                        const switchDevice = context.devices.find(d => d.type === 'Switch');
                         if (!switchDevice) return false;
 
                         const port1 = switchDevice.ports.find(p => p.name.includes('0/0/1'));
