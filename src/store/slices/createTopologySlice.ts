@@ -14,7 +14,7 @@ import { wasmSetTopology } from '../../wasm/wasmBridge';
 import { err, isRecord, ok, type Result } from '../../utils/guards';
 import { cryptoIdSource, mathRandomSource, type IdSource, type RandomSource } from '../../utils/runtime';
 import { isModelLabel, parseTopology, withLink } from '../../utils/topology/topologyGuards';
-import { isLabInProgress, loadTopology } from '../topologyAutosave';
+import { isLabInProgress, loadTopology, saveTopology, type AutosaveError } from '../topologyAutosave';
 import type { NetworkState } from '../useNetworkStore';
 
 // Placeholders kept for the CLI layer; the routing engine recomputes these.
@@ -31,7 +31,9 @@ export interface TopologySlice {
   selectedPort: { deviceId: string; portId: string } | null;
 
   /** Restores the locally autosaved topology, if a valid one exists. */
-  initialize: () => void;
+  initialize: (onError?: (error: AutosaveError) => void) => void;
+  /** Shows a save failure to the user; set by initialize, a no-op until then. */
+  reportSaveError: (error: AutosaveError) => void;
   addDevice: (model: SwitchModel, position?: { x: number; y: number }) => NetworkDevice;
   /** Removes a device together with its cables. */
   removeDevice: (id: string) => void;
@@ -54,7 +56,9 @@ export interface TopologySlice {
   setTopology: (devices: NetworkDevice[], cables: NetworkCable[]) => void;
   /**
    * The only way a feature swaps the whole topology: validates the input,
-   * refuses while a lab is in progress, closes consoles of devices that
+   * refuses while a lab is in progress, closes a completed lab session (the user is
+   * replacing the canvas on purpose, so nothing is restored and autosave resumes on the
+   * new topology), closes consoles of devices that
    * disappear, clears selections and rebuilds link state from the cables.
    */
   replaceTopology: (next: {
@@ -177,8 +181,11 @@ export const createTopologySlice: StateCreator<NetworkState, [], [], TopologySli
   presenceEntries: [],
   workspaceSecurity: { roles: {} },
 
-  initialize: () => {
-    const saved = loadTopology(get().runtime.storage);
+  reportSaveError: () => undefined,
+
+  initialize: (onError) => {
+    if (onError) set({ reportSaveError: onError });
+    const saved = loadTopology(get().runtime.storage, onError);
     if (!saved.ok) return;
     set({ devices: saved.value.devices, cables: saved.value.cables });
   },
@@ -319,6 +326,7 @@ export const createTopologySlice: StateCreator<NetworkState, [], [], TopologySli
 
   replaceTopology: (next) => {
     if (isLabInProgress(get().currentLabSession)) return err('lab-in-progress');
+    const closing = get().currentLabSession !== null;
     const parsed = parseTopology(next);
     if (!parsed.ok) return err('invalid-topology');
     const { devices, cables } = parsed.value;
@@ -330,7 +338,17 @@ export const createTopologySlice: StateCreator<NetworkState, [], [], TopologySli
     set({ selectedPort: null, pendingSfpModule: null, activeTrafficParams: [], packetTrace: null });
 
     const unlinked = devices.map((d) => ({ ...d, ports: d.ports.map((p) => withLink(p, null, 'down')) }));
-    get().setTopology(unlinked, []);
+    if (closing) {
+      // The session ends in the same update that sets the new devices, so autosave resumes on them.
+      set({ currentLabSession: null, devices: unlinked, cables: [] });
+      try {
+        wasmSetTopology(unlinked, []);
+      } catch {
+        // The engine is not ready yet; the entry point pushes the topology once it is.
+      }
+    } else {
+      get().setTopology(unlinked, []);
+    }
     for (const cable of cables) get().addCable(cable);
 
     // Administratively disabled ports stay down even when cabled.
@@ -340,6 +358,12 @@ export const createTopologySlice: StateCreator<NetworkState, [], [], TopologySli
           d.ports.some(isShutWhileUp) ? { ...d, ports: d.ports.map((p) => (isShutWhileUp(p) ? shut(p) : p)) } : d,
         ),
       }));
+    }
+    if (closing) {
+      // Leaving a lab is not an edit for the autosave, so save the new topology now.
+      const { runtime, devices: current, cables: linked } = get();
+      const saved = saveTopology(runtime.storage, current, linked);
+      if (!saved.ok) get().reportSaveError(saved.error);
     }
     return ok(undefined);
   },

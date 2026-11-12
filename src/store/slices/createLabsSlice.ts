@@ -4,6 +4,7 @@
  */
 
 import type { StateCreator } from 'zustand';
+import { loadTopology, saveTopology } from '../topologyAutosave';
 import type { Lab, LabProgress, LabSession, LabValidationContext } from '../../types/NetworkTypes';
 import { ALL_LABS } from '../../data/labs/index';
 import { isLabDefinition, sanitizeCatalog } from '../../features/labs/domain/labCatalog';
@@ -156,6 +157,20 @@ export const createLabsSlice: StateCreator<NetworkState, [], [], LabsSlice> = (s
 
       // An attempt that is still open is abandoned; it is restored if the swap fails.
       const previous = get().currentLabSession;
+      // Edits still waiting for the autosave delay belong to the user's topology: save them
+      // before the lab replaces it. Skipped when the store already holds a lab topology.
+      if (previous === null) {
+        const { devices, cables, runtime } = get();
+        const hasSave = loadTopology(runtime.storage).ok;
+        if (hasSave || devices.length > 0 || cables.length > 0) {
+          // If the user's topology cannot be saved, the lab would replace the only copy: do not start it.
+          const saved = saveTopology(runtime.storage, devices, cables);
+          if (!saved.ok) {
+            get().reportSaveError(saved.error);
+            return;
+          }
+        }
+      }
       if (previous !== null) set({ currentLabSession: null });
       const replaced = get().replaceTopology(built);
       if (!replaced.ok) {
@@ -231,7 +246,25 @@ export const createLabsSlice: StateCreator<NetworkState, [], [], LabsSlice> = (s
     },
 
     resetLab: () => {
-      set({ currentLabSession: null });
+      if (get().currentLabSession === null) return;
+      // The lab topology must not stay behind: put the user's own topology back
+      // (or an empty one when nothing was saved) in the same update that ends the session.
+      const saved = loadTopology(get().runtime.storage);
+      const devices = saved.ok ? saved.value.devices : [];
+      const cables = saved.ok ? saved.value.cables : [];
+      const kept = new Set(devices.map((device) => device.id));
+      for (const consoleId of [...get().openConsoleIds]) {
+        if (!kept.has(consoleId)) get().closeConsole(consoleId);
+      }
+      set({
+        currentLabSession: null,
+        devices,
+        cables,
+        selectedPort: null,
+        pendingSfpModule: null,
+        activeTrafficParams: [],
+        packetTrace: null,
+      });
     },
 
     clearLabHistory: () => {

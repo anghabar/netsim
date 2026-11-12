@@ -40,28 +40,41 @@ export function saveTopology(
   // Never replace a readable save with text that loadTopology would reject.
   const json = parseJsonText(text, { maxBytes: TOPOLOGY_AUTOSAVE_SLOT.maxBytes });
   if (!json.ok || !parseTopology(json.value).ok) return err('invalid-topology');
-  return storage.write(TOPOLOGY_AUTOSAVE_SLOT, text);
+  const written = storage.write(TOPOLOGY_AUTOSAVE_SLOT, text);
+  // The unreadable copy is only needed until a valid topology has been saved again.
+  if (written.ok) storage.remove(TOPOLOGY_CORRUPT_SLOT);
+  return written;
 }
 
-export function loadTopology(storage: KeyValueStorage): Result<ParsedTopology, 'empty' | 'corrupt'> {
+export function loadTopology(
+  storage: KeyValueStorage,
+  onError?: (error: AutosaveError) => void,
+): Result<ParsedTopology, 'empty' | 'corrupt'> {
   const text = storage.read(TOPOLOGY_AUTOSAVE_SLOT);
   if (text === null) return err('empty');
   const json = parseJsonText(text, { maxBytes: TOPOLOGY_AUTOSAVE_SLOT.maxBytes });
-  if (!json.ok || !isRecord(json.value) || json.value.version !== FORMAT_VERSION) return keepCorrupt(storage, text);
+  if (!json.ok || !isRecord(json.value) || json.value.version !== FORMAT_VERSION) return keepCorrupt(storage, text, onError);
   const parsed = parseTopology(json.value);
-  return parsed.ok ? ok(parsed.value) : keepCorrupt(storage, text);
+  return parsed.ok ? ok(parsed.value) : keepCorrupt(storage, text, onError);
 }
 
 /** Copies unreadable saved text to its own slot before the next autosave can overwrite it. */
-function keepCorrupt(storage: KeyValueStorage, text: string): Result<never, 'corrupt'> {
-  storage.write(TOPOLOGY_CORRUPT_SLOT, text);
+function keepCorrupt(
+  storage: KeyValueStorage,
+  text: string,
+  onError?: (error: AutosaveError) => void,
+): Result<never, 'corrupt'> {
+  const kept = storage.write(TOPOLOGY_CORRUPT_SLOT, text);
+  if (!kept.ok && onError) onError(kept.error);
   return err('corrupt');
 }
 
 /**
  * Saves devices and cables to local storage shortly after they change.
- * Paused while a lab is in progress so the lab topology does not replace the
- * user's own. Returns a function that stops the subscription and the timer.
+ * Never writes while a lab topology is in the store: it is suspended when a lab
+ * starts and resumes only when leaving the lab put the user's own topology
+ * back. Each error is reported once until a save succeeds again. Returns a
+ * function that stops the subscription and the timer.
  */
 export function attachTopologyAutosave(
   store: Pick<StoreApi<NetworkState>, 'getState' | 'subscribe'>,
@@ -69,26 +82,50 @@ export function attachTopologyAutosave(
 ): () => void {
   const delayMs = options.delayMs ?? 1000;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let suspended = store.getState().currentLabSession !== null;
+  let lastError: AutosaveError | null = null;
+
+  const cancel = (): void => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
 
   const flush = (): void => {
     timer = null;
     const state = store.getState();
-    if (isLabInProgress(state.currentLabSession)) return;
+    if (suspended || state.currentLabSession !== null) return;
     const saved = saveTopology(state.runtime.storage, state.devices, state.cables);
-    if (!saved.ok && options.onError) options.onError(saved.error);
+    if (saved.ok) {
+      lastError = null;
+    } else if (saved.error !== lastError) {
+      lastError = saved.error;
+      if (options.onError) options.onError(saved.error);
+    }
   };
 
   const unsubscribe = store.subscribe((state, previous) => {
-    if (state.devices === previous.devices && state.cables === previous.cables) return;
-    if (timer !== null) clearTimeout(timer);
+    if (state.currentLabSession !== null) {
+      suspended = true;
+      cancel();
+      return;
+    }
+    const changed = state.devices !== previous.devices || state.cables !== previous.cables;
+    if (previous.currentLabSession !== null) {
+      // Leaving a lab restores the user's topology in the same update; that restore is not an edit.
+      if (changed) {
+        suspended = false;
+        lastError = null;
+      }
+      cancel();
+      return;
+    }
+    if (!changed || suspended) return;
+    cancel();
     timer = setTimeout(flush, delayMs);
   });
 
   return () => {
     unsubscribe();
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+    cancel();
   };
 }
