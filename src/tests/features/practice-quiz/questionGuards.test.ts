@@ -60,7 +60,7 @@ describe('question guard', () => {
   });
 
   it('drops unknown fields and prototype-related names from parsed text', () => {
-    const text = JSON.stringify(valid).replace('{', '{"__proto__":{"polluted":true},"extra":{"x":1},');
+    const text = JSON.stringify(valid).replace(/^\{/, '{"__proto__":{"polluted":true},"extra":{"x":1},');
     const raw: unknown = JSON.parse(text);
     const parsed = parseQuizQuestion(raw);
     expect(parsed).toEqual(valid);

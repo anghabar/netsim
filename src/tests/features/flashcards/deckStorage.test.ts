@@ -64,7 +64,7 @@ describe('flashcard deck storage', () => {
   });
 
   it('copies known fields only and never touches Object.prototype', () => {
-    const crafted = JSON.stringify(valid).replace('{', '{"__proto__":{"polluted":true},"extra":1,');
+    const crafted = JSON.stringify(valid).replace(/^\{/, '{"__proto__":{"polluted":true},"extra":1,');
     const text = `{"version":1,"__proto__":{"polluted":true},"cards":[${crafted}],"streak":null}`;
     const loaded = parseStoredDeck(text).progress.get('card-a');
     expect(loaded).toEqual(valid);
