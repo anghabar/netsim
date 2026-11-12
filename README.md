@@ -125,12 +125,4 @@ We welcome contributions! Please follow these steps:
 
 ## 📄 License
 
-Distributed under the GNU Affero General Public License v3.0 (AGPL-3.0).
-
-*   **Free for personal and educational use.**
-*   **Commercial use requires a dedicated license.** Contact `info@netsim.dev`.
-
-<div align="center">
-  <p>Made with ❤️ and <b>Data Packets</b> by the <strong>NetSim Labs Team</strong></p>
-  <p><small>Copyright © 2026 NetSim Labs. All rights reserved.</small></p>
-</div>
+NetSim is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See [LICENSE](LICENSE).

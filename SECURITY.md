@@ -71,5 +71,5 @@ Please test against your own local copy of the application. Do not test against 
 ## Advice for users
 
 - Do not type real credentials or production configuration into simulated devices. Saved topologies are stored unencrypted in your browser's local storage.
-- Exported files contain what you configured, including values such as simulated passwords. Review a file before sharing it.
+- Exported topology files leave out secret-looking values such as simulated passwords unless you turn on **Include secrets in exported files**, and the export report lists the fields it left out. With that option on, configured passwords are written in clear text: review a file before sharing it.
 - Only import topology files from sources you trust, and keep your copy of NetSim up to date.
