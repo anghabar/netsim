@@ -120,7 +120,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       # Reads package-lock.json only: nothing is installed and no package
       # script runs in this job.
-      - name: Audit dependencies
-        # Advisory for now: it becomes blocking once the dependencies are updated.
+      # Blocking: a high or critical advisory in a dependency the app ships fails the job.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      # Advisory: development tools (test runner, linters, build plugins) are reported
+      # without failing the job, so a new advisory there does not block unrelated changes.
+      - name: Audit all dependencies (report only)
         continue-on-error: true
         run: npm audit --audit-level=high
