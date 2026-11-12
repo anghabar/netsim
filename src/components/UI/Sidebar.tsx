@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,25 +9,29 @@ import {
   Cpu,
   Plus,
   GraduationCap,
-  // ShieldCheck,
-  LucideIcon,
+  Zap,
+  type LucideIcon,
 } from 'lucide-react';
-// StreakWidget removed
 import { useNetworkStore } from '../../store/useNetworkStore';
+import { SidebarQuickTab } from '../../features/sidebar/tabs';
 import { UserProfile } from './UserProfile';
 import { cn } from '../../utils/cn';
 import { Input } from './Input';
 
+/** Tab ids the simulator shell may pass; the sidebar renders 'devices' and 'quick'. */
+export type SidebarTabId = 'quick' | 'devices' | 'labs' | 'status' | 'storage' | 'documentation';
+
 export interface SidebarProps {
-  sidebarTab?: any;
-  setSidebarTab?: any;
-  search?: any;
-  setSearch?: any;
-  sidebarSections?: any;
-  toggleSection?: any;
-  handleAddDevice?: any;
-  mode?: any;
-  activeUser?: any;
+  sidebarTab?: SidebarTabId;
+  setSidebarTab?: (tab: SidebarTabId) => void;
+  search?: string;
+  setSearch?: (value: string) => void;
+  handleAddDevice?: (model: string) => void;
+  // Accepted for compatibility with the shell; not used by the sidebar.
+  sidebarSections?: unknown;
+  toggleSection?: unknown;
+  mode?: unknown;
+  activeUser?: unknown;
 }
 
 interface DeviceTemplate {
@@ -162,9 +166,20 @@ const categories: Array<{ id: CategoryId; label: string; icon: LucideIcon }> = [
   { id: 'modules', label: 'Modules', icon: Cpu },
 ];
 
-export default function Sidebar(_props: SidebarProps) {
+type SidebarView = 'devices' | 'quick';
+
+const sidebarViews: Array<{ id: SidebarView; label: string; icon: LucideIcon }> = [
+  { id: 'devices', label: 'Devices', icon: Box },
+  { id: 'quick', label: 'Quick', icon: Zap },
+];
+
+const sfpModuleModels: readonly string[] = ['10G-SR', '10G-LR'];
+
+export default function Sidebar(props: SidebarProps) {
+  const { sidebarTab, setSidebarTab, handleAddDevice } = props;
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [search, setSearch] = useState('');
+  const [localView, setLocalView] = useState<SidebarView>('devices');
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
     routers: true,
     switches: true,
@@ -172,20 +187,24 @@ export default function Sidebar(_props: SidebarProps) {
     modules: true
   });
 
-  const {
-    selectSfpModule,
-    pendingSfpModule,
-    setShowLabsPanel,
-    // Gamification removed
-    // SelfHealing removed
-    setShow3DView
-  } = useNetworkStore();
+  const selectSfpModule = useNetworkStore((state) => state.selectSfpModule);
+  const pendingSfpModule = useNetworkStore((state) => state.pendingSfpModule);
+  const setShowLabsPanel = useNetworkStore((state) => state.setShowLabsPanel);
+  const setShow3DView = useNetworkStore((state) => state.setShow3DView);
+
+  // The shell owns the active tab when it passes a setter; otherwise the sidebar keeps it locally.
+  const view: SidebarView = setSidebarTab ? (sidebarTab === 'quick' ? 'quick' : 'devices') : localView;
+
+  const selectView = (next: SidebarView) => {
+    setLocalView(next);
+    if (setSidebarTab) setSidebarTab(next);
+  };
 
   const toggleCategory = (id: string) => {
     setOpenCategories(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleAddStart = (e: React.DragEvent, device: DeviceTemplate) => {
+  const handleAddStart = (e: DragEvent<HTMLDivElement>, device: DeviceTemplate) => {
     e.dataTransfer.setData('application/reactflow', device.type);
     e.dataTransfer.setData('application/model', device.model);
     e.dataTransfer.effectAllowed = 'move';
@@ -220,6 +239,8 @@ export default function Sidebar(_props: SidebarProps) {
           </div>
         )}
         <button
+          type="button"
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={cn(
             "p-2.5 rounded-2xl transition-all duration-300 flex items-center justify-center",
@@ -232,8 +253,38 @@ export default function Sidebar(_props: SidebarProps) {
         </button>
       </div>
 
-      {/* Search Bar */}
+      {/* Tab switch */}
       {!isCollapsed && (
+        <div
+          role="tablist"
+          aria-label="Sidebar sections"
+          className="mx-6 mt-3 grid grid-cols-2 gap-1 rounded-2xl border border-white/[0.06] bg-black/30 p-1"
+        >
+          {sidebarViews.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`sidebar-tab-${id}`}
+              aria-selected={view === id}
+              aria-controls={`sidebar-panel-${id}`}
+              onClick={() => selectView(id)}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors",
+                view === id
+                  ? "bg-netsim-cyan/15 text-netsim-cyan"
+                  : "text-zinc-500 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <Icon size={13} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Search Bar */}
+      {!isCollapsed && view === 'devices' && (
         <div className="px-6 py-4 animate-fade-in-up">
           <div className="relative group">
             <Input
@@ -247,10 +298,37 @@ export default function Sidebar(_props: SidebarProps) {
         </div>
       )}
 
-      {/* Device Catalog Content */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
-        {!isCollapsed ? (
-          <>
+        {isCollapsed ? (
+          <div className="flex flex-col gap-6 items-center pt-10 animate-fade-in">
+            <button
+              type="button"
+              title="Quick topologies"
+              aria-label="Quick topologies"
+              onClick={() => { setIsCollapsed(false); selectView('quick'); }}
+              className="p-3.5 rounded-2xl bg-white/[0.03] text-zinc-500 hover:text-netsim-cyan hover:bg-netsim-cyan/5 transition-all border border-white/[0.02] hover:border-netsim-cyan/20"
+            >
+              <Zap size={20} />
+            </button>
+            {categories.map(cat => (
+              <div
+                key={cat.id}
+                className="p-3.5 rounded-2xl bg-white/[0.03] text-zinc-500 hover:text-netsim-cyan hover:bg-netsim-cyan/5 hover:shadow-[0_0_20px_rgba(41,217,255,0.1)] transition-all cursor-pointer border border-white/[0.02] hover:border-netsim-cyan/20 group relative"
+                title={cat.label}
+                onClick={() => { setIsCollapsed(false); selectView('devices'); toggleCategory(cat.id); }}
+              >
+                <cat.icon size={20} className="group-hover:scale-110 transition-transform" />
+                <div className="absolute left-[-4px] w-1 h-0 bg-netsim-cyan rounded-r-full group-hover:h-5 top-1/2 -translate-y-1/2 transition-all shadow-[0_0_10px_rgba(41,217,255,0.8)]" />
+              </div>
+            ))}
+          </div>
+        ) : view === 'quick' ? (
+          <div role="tabpanel" id="sidebar-panel-quick" aria-labelledby="sidebar-tab-quick">
+            <SidebarQuickTab />
+          </div>
+        ) : (
+          <div role="tabpanel" id="sidebar-panel-devices" aria-labelledby="sidebar-tab-devices" className="space-y-6">
             {categories.map(cat => (
               <div key={cat.id} className="space-y-3">
                 <button
@@ -268,10 +346,10 @@ export default function Sidebar(_props: SidebarProps) {
                   <div className="space-y-2 animate-scale-in">
                     {cat.id === 'modules' ? (
                       <div className="grid grid-cols-2 gap-2 mt-1">
-                        {['10G-SR', '10G-LR'].map(mod => (
+                        {sfpModuleModels.map(mod => (
                           <button
                             key={mod}
-                            onClick={() => selectSfpModule(mod as any)}
+                            onClick={() => selectSfpModule(mod)}
                             className={cn(
                               'flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-300 relative overflow-hidden group',
                               pendingSfpModule === mod
@@ -295,7 +373,7 @@ export default function Sidebar(_props: SidebarProps) {
                           key={idx}
                           draggable
                           onDragStart={(e) => handleAddStart(e, device)}
-                          onClick={() => _props.handleAddDevice && _props.handleAddDevice(device.model)}
+                          onClick={() => handleAddDevice?.(device.model)}
                           className="group relative flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] hover:bg-netsim-cyan/[0.08] border border-white/[0.04] hover:border-netsim-cyan/30 cursor-grab active:cursor-grabbing transition-all duration-300"
                         >
                           <div className="p-2.5 rounded-xl bg-black/40 border border-white/[0.08] group-hover:border-netsim-cyan/30 group-hover:shadow-[0_0_15px_rgba(41,217,255,0.15)] transition-all">
@@ -318,28 +396,12 @@ export default function Sidebar(_props: SidebarProps) {
                 )}
               </div>
             ))}
-          </>
-        ) : (
-          <div className="flex flex-col gap-6 items-center pt-10 animate-fade-in">
-            {categories.map(cat => (
-              <div
-                key={cat.id}
-                className="p-3.5 rounded-2xl bg-white/[0.03] text-zinc-500 hover:text-netsim-cyan hover:bg-netsim-cyan/5 hover:shadow-[0_0_20px_rgba(41,217,255,0.1)] transition-all cursor-pointer border border-white/[0.02] hover:border-netsim-cyan/20 group relative"
-                title={cat.label}
-                onClick={() => { setIsCollapsed(false); toggleCategory(cat.id); }}
-              >
-                <cat.icon size={20} className="group-hover:scale-110 transition-transform" />
-                <div className="absolute left-[-4px] w-1 h-0 bg-netsim-cyan rounded-r-full group-hover:h-5 top-1/2 -translate-y-1/2 transition-all shadow-[0_0_10px_rgba(41,217,255,0.8)]" />
-              </div>
-            ))}
           </div>
         )}
       </div>
 
       {/* Tools Section */}
       <div className="p-4 bg-white/[0.02] border-t border-white/[0.05] space-y-2 relative">
-        {/* Streak Widget Removed */}
-
         <div className="grid grid-cols-1 gap-1">
           <button onClick={() => setShowLabsPanel(true)} className="flex items-center gap-4 p-3.5 text-zinc-400 hover:text-white hover:bg-white/[0.05] rounded-2xl transition-all group overflow-hidden relative">
             <div className="absolute inset-y-0 left-0 w-1 bg-netsim-purple translate-x-[-100%] group-hover:translate-x-0 transition-transform" />
@@ -352,8 +414,6 @@ export default function Sidebar(_props: SidebarProps) {
             <Box size={20} className="text-netsim-pink opacity-80 group-hover:opacity-100" />
             {!isCollapsed && <span className="text-xs font-black uppercase tracking-widest">3D View</span>}
           </button>
-
-          {/* NetGuard/Self-Healing Removed */}
         </div>
       </div>
 
