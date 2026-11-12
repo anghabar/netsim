@@ -4,7 +4,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { loadTopology } from '../topologyAutosave';
+import { loadTopology, saveTopology } from '../topologyAutosave';
 import type { Lab, LabProgress, LabSession, LabValidationContext } from '../../types/NetworkTypes';
 import { ALL_LABS } from '../../data/labs/index';
 import { isLabDefinition, sanitizeCatalog } from '../../features/labs/domain/labCatalog';
@@ -157,6 +157,13 @@ export const createLabsSlice: StateCreator<NetworkState, [], [], LabsSlice> = (s
 
       // An attempt that is still open is abandoned; it is restored if the swap fails.
       const previous = get().currentLabSession;
+      // Edits still waiting for the autosave delay belong to the user's topology: save them
+      // before the lab replaces it. Skipped when the store already holds a lab topology.
+      if (previous === null) {
+        const { devices, cables, runtime } = get();
+        const hasSave = loadTopology(runtime.storage).ok;
+        if (hasSave || devices.length > 0 || cables.length > 0) saveTopology(runtime.storage, devices, cables);
+      }
       if (previous !== null) set({ currentLabSession: null });
       const replaced = get().replaceTopology(built);
       if (!replaced.ok) {

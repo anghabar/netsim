@@ -193,6 +193,26 @@ describe('topology autosave', () => {
     detach();
   });
 
+  it('keeps an edit made just before a lab starts', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    store.getState().loadLabs();
+    const detach = attachTopologyAutosave(store, { delayMs: 1000 });
+
+    store.getState().addDevice('PC');
+    const editedId = store.getState().devices[0].id;
+    store.getState().startLab(store.getState().availableLabs[0].id);
+    expect(store.getState().currentLabSession).not.toBeNull();
+    vi.advanceTimersByTime(5000);
+    const saved = loadTopology(storage);
+    expect(saved.ok && saved.value.devices.map((d) => d.id)).toEqual([editedId]);
+
+    store.getState().resetLab();
+    expect(store.getState().devices.map((d) => d.id)).toEqual([editedId]);
+    detach();
+  });
+
   it('restores the user topology on exit and resumes autosave on it', () => {
     vi.useFakeTimers();
     const store = createTestStore();
