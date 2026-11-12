@@ -8,9 +8,14 @@ import type { NetworkState } from './useNetworkStore';
 
 export const TOPOLOGY_AUTOSAVE_SLOT = defineStorageSlot('netsim.topology.autosave.v1', { maxBytes: 3000000 });
 
+/** Holds the raw text of an autosave that could not be read, so a later save cannot destroy it. */
+export const TOPOLOGY_CORRUPT_SLOT = defineStorageSlot('netsim.topology.autosave.corrupt.v1', {
+  maxBytes: 3000000,
+});
+
 const FORMAT_VERSION = 1;
 
-export type AutosaveError = StorageWriteError | 'not-serializable';
+export type AutosaveError = StorageWriteError | 'not-serializable' | 'invalid-topology';
 
 /** A lab is in progress until its session is cleared or marked as completed. */
 export function isLabInProgress(session: LabSession | null): boolean {
@@ -32,6 +37,9 @@ export function saveTopology(
   } catch {
     return err('not-serializable');
   }
+  // Never replace a readable save with text that loadTopology would reject.
+  const json = parseJsonText(text, { maxBytes: TOPOLOGY_AUTOSAVE_SLOT.maxBytes });
+  if (!json.ok || !parseTopology(json.value).ok) return err('invalid-topology');
   return storage.write(TOPOLOGY_AUTOSAVE_SLOT, text);
 }
 
@@ -39,9 +47,15 @@ export function loadTopology(storage: KeyValueStorage): Result<ParsedTopology, '
   const text = storage.read(TOPOLOGY_AUTOSAVE_SLOT);
   if (text === null) return err('empty');
   const json = parseJsonText(text, { maxBytes: TOPOLOGY_AUTOSAVE_SLOT.maxBytes });
-  if (!json.ok || !isRecord(json.value) || json.value.version !== FORMAT_VERSION) return err('corrupt');
+  if (!json.ok || !isRecord(json.value) || json.value.version !== FORMAT_VERSION) return keepCorrupt(storage, text);
   const parsed = parseTopology(json.value);
-  return parsed.ok ? ok(parsed.value) : err('corrupt');
+  return parsed.ok ? ok(parsed.value) : keepCorrupt(storage, text);
+}
+
+/** Copies unreadable saved text to its own slot before the next autosave can overwrite it. */
+function keepCorrupt(storage: KeyValueStorage, text: string): Result<never, 'corrupt'> {
+  storage.write(TOPOLOGY_CORRUPT_SLOT, text);
+  return err('corrupt');
 }
 
 /**
