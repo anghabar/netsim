@@ -1,5 +1,4 @@
 /**
- * Sidebar Tabs
+ * Sidebar tabs
  */
-// export { SidebarQuickTab } from './SidebarQuickTab';
-export { };
+export { QuickTopologiesTab as SidebarQuickTab } from '../../quick-topologies/components/QuickTopologiesTab';
