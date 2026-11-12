@@ -9,7 +9,13 @@ vi.mock('../../wasm/wasmBridge', () => ({
 }));
 
 import type { LabSession } from '../../types/NetworkTypes';
-import { attachTopologyAutosave, loadTopology, TOPOLOGY_AUTOSAVE_SLOT } from '../../store/topologyAutosave';
+import {
+  attachTopologyAutosave,
+  loadTopology,
+  saveTopology,
+  TOPOLOGY_AUTOSAVE_SLOT,
+  TOPOLOGY_CORRUPT_SLOT,
+} from '../../store/topologyAutosave';
 import { createTestStore, linkedPair, TEST_EPOCH_MS } from '../helpers/createTestStore';
 
 const labSession = (completedAt?: string): LabSession => ({
@@ -182,5 +188,48 @@ describe('topology autosave', () => {
     storage.write(TOPOLOGY_AUTOSAVE_SLOT, '{"version":1,"devices":[{"id":"x"}],"cables":[]}');
     store.getState().initialize();
     expect(store.getState().devices).toEqual([]);
+  });
+
+  it('does not save a topology that could not be loaded again', () => {
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const { a, b, cable } = linkedPair();
+    expect(saveTopology(storage, [a, b], [cable]).ok).toBe(true);
+    const before = storage.read(TOPOLOGY_AUTOSAVE_SLOT);
+
+    const tooLong = { ...a, hostname: 'h'.repeat(500) };
+    expect(saveTopology(storage, [tooLong, b], [cable])).toEqual({ ok: false, error: 'invalid-topology' });
+    expect(storage.read(TOPOLOGY_AUTOSAVE_SLOT)).toBe(before);
+    expect(loadTopology(storage).ok).toBe(true);
+  });
+
+  it('keeps unreadable saved text in a second slot and does not overwrite it', () => {
+    vi.useFakeTimers();
+    const store = createTestStore();
+    const storage = store.getState().runtime.storage;
+    const unreadable = '{"version":1,"devices":[{"id":"x"}],"cables":[]}';
+    storage.write(TOPOLOGY_AUTOSAVE_SLOT, unreadable);
+    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBeNull();
+
+    store.getState().initialize();
+    expect(store.getState().devices).toEqual([]);
+    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBe(unreadable);
+
+    const detach = attachTopologyAutosave(store, { delayMs: 50 });
+    store.getState().addDevice('PC');
+    vi.advanceTimersByTime(50);
+    detach();
+    expect(storage.read(TOPOLOGY_AUTOSAVE_SLOT)).not.toBe(unreadable);
+    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBe(unreadable);
+  });
+
+  it('round-trips a valid topology and leaves the second slot empty', () => {
+    const storage = createTestStore().getState().runtime.storage;
+    const { a, b, cable } = linkedPair();
+    expect(saveTopology(storage, [a, b], [cable]).ok).toBe(true);
+    const loaded = loadTopology(storage);
+    expect(loaded.ok && loaded.value.devices.map((d) => d.id)).toEqual([a.id, b.id]);
+    expect(loaded.ok && loaded.value.cables).toHaveLength(1);
+    expect(storage.read(TOPOLOGY_CORRUPT_SLOT)).toBeNull();
   });
 });
