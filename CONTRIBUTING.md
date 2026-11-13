@@ -12,7 +12,7 @@ These rules apply to every change. A pull request that breaks one of them will n
 2. **No telemetry.** No analytics, tracking, error reporting services or any other code that sends data out of the browser.
 3. **No new runtime dependencies without discussion.** Open an issue first and explain why the dependency is needed and what it adds to the bundle. Development dependencies also need a short justification in the pull request.
 4. **English everywhere.** Code, comments, identifiers, file names, test names, commit messages and pull request text are written in English.
-5. **Licence.** The project is licensed under AGPL-3.0, and so are all contributions (see [License](#license)).
+5. **Licence.** The project is licensed under AGPL-3.0. Every contributor signs the [contributor licence agreement](CLA.md) once, and contributions are then distributed under AGPL-3.0 (see [Contributor licence agreement](#contributor-licence-agreement) and [License](#license)).
 
 ## Development setup
 
@@ -113,6 +113,15 @@ If a feature seems to need a change in a shared file, open an issue to discuss i
 2. Do not edit `CHANGELOG.md`. Write the entry in the pull request description; the maintainers add it at release time.
 3. Update the documentation when behaviour changes.
 4. Link the related issues.
+
+## Contributor licence agreement
+
+Before a pull request can be merged, its author must sign the [contributor licence agreement](CLA.md) (CLA).
+
+- **Why.** The CLA lets the project maintainer relicense the project in the future, for example to offer it under additional licences. You keep the copyright in your contribution and can use it however you like.
+- **How.** When you open a pull request, a bot comments with a link to the CLA. Read it, then reply with this exact comment: `I have read the CLA Document and I hereby sign the CLA`.
+- **One time.** You sign once. The signature covers your future pull requests, and the check turns green on its own.
+- **Employers.** If you contribute as part of your job, make sure your employer allows it before you sign.
 
 ## Reporting bugs and requesting features
 

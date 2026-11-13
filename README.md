@@ -121,7 +121,7 @@ We welcome contributions! Please follow these steps:
 2.  Read the [contributing guide](CONTRIBUTING.md): it covers the development setup, the checks to run before a pull request and the project policies.
 3.  Fork the repo and create your branch as `<type>/<topic-in-english>`.
 4.  Run the checks listed in the contributing guide, including `cargo test` for the Rust core.
-5.  Open a Pull Request.
+5.  Open a Pull Request and sign the [contributor licence agreement](CLA.md) by replying to the bot comment (one time only).
 
 ## 📄 License
 

@@ -1,0 +1,54 @@
+name: CLA
+
+# Checks that every pull request author has signed the contributor licence
+# agreement (CLA.md). Contributors sign by commenting on the pull request;
+# signatures are stored on the dedicated `cla-signatures` branch, never on main.
+#
+# Security notes:
+# - `pull_request_target` runs with a write token, so this workflow never
+#   checks out or runs code from the pull request. The action only reads the
+#   CLA document from the default branch and the list of authors from the API.
+# - The action is pinned by commit sha.
+
+on:
+  issue_comment:
+    types:
+      - created
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - closed
+
+jobs:
+  cla:
+    name: CLA check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Run for pull request events, and for comments on a pull request that
+    # are either the sign phrase or a request to re-check.
+    if: >-
+      (github.event_name == 'pull_request_target') ||
+      (github.event.issue.pull_request &&
+      (github.event.comment.body == 'recheck' ||
+      github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA'))
+    # Job-level permissions: the minimum the action needs.
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+      statuses: write
+    steps:
+      - name: Check the CLA signature
+        # contributor-assistant/github-action v2.6.1
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-document: 'https://github.com/${{ github.repository }}/blob/main/CLA.md'
+          path-to-signatures: 'signatures/cla.json'
+          branch: 'cla-signatures'
+          # Bots and the repository owner do not need to sign.
+          # TODO(founder): confirm the owner login below.
+          allowlist: 'anghabar,dependabot[bot],github-actions[bot]'
+          custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
