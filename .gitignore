@@ -130,7 +130,7 @@ ssh-proxy/
 api/
 supabase/
 
-# --- SECURITY & CLEANUP (NetSim Labs) ---
+# --- SECURITY & CLEANUP (Anghabar) ---
 
 # AI & IDE Context (Never commit these)
 .claude/

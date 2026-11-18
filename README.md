@@ -131,6 +131,6 @@ Distributed under the GNU Affero General Public License v3.0 (AGPL-3.0).
 *   **Commercial use requires a dedicated license.** Contact `info@netsim.dev`.
 
 <div align="center">
-  <p>Made with ❤️ and <b>Data Packets</b> by the <strong>NetSim Labs Team</strong></p>
-  <p><small>Copyright © 2026 NetSim Labs. All rights reserved.</small></p>
+  <p>Made by Anghabar · https://netsim.dev</p>
+  <p><small>Copyright (c) 2026 Anghabar. Licensed under the GNU AGPL-3.0 (see LICENSE).</small></p>
 </div>
