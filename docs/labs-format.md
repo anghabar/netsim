@@ -76,6 +76,13 @@ When it fails, the checker adds a short observation such as "SW2 has no VLAN 10"
 | `ospf-enabled` | `device` | OSPF is running on the router. |
 | `ospf-adjacency` | `a`, `b` | The two routers are OSPF neighbours. |
 | `ospf-route` | `device`, `prefix` (`198.51.100.0/30`) | The router learned the prefix from another router through OSPF. |
+| `static-route` | `device`, `prefix`, `nextHop` | The device has that static route. |
+| `ip-reachable` | `from`, `address`, `expected` (default `true`) | A ping from the device to the address works, request and reply, following connected networks, static routes, default gateways, VLAN interfaces and access lists. |
+| `vlanif-address` | `device`, `vlan`, `address`, `prefix` | The VLAN interface has that address. |
+| `eth-trunk-mode` | `device`, `trunk`, `mode` (`static`, `active`, `passive` or `lacp` for either LACP mode) | The Eth-Trunk is in that mode. |
+| `eth-trunk-members` | `device`, `trunk`, `count` | The Eth-Trunk has at least that many member ports. |
+| `eth-trunk-up` | `a`, `b`, `trunk`, `count` | At least that many cables are bundled between the two switches: the far ports are members of an Eth-Trunk on the other switch whose mode can negotiate (static with static, or LACP with at least one active side). |
+| `port-feature` | `device`, `port`, `feature` (`portfast`, `bpdu-guard`, `port-security`), `enabled` (default `true`), `maxMacs` (port security only) | The feature is on (or off, when `enabled` is `false`) for the port. |
 
 ## How criteria read the network
 
@@ -104,9 +111,25 @@ OSPF is configured with single-line commands in system view:
 `ospf <id> area <area> network <ip> <wildcard>`. Statements are kept as
 `network` entries in the device's `ospfLsdb`.
 
-The feature also registers the existing `port link-type`, `port default vlan`,
-`port trunk allow-pass vlan` and `stp` commands (see `feature.commands.ts`),
-which the command library already contained but the executor did not register.
+- **IP reachability** (`domain/l3.ts`): a packet is followed hop by hop. A device
+  uses the longest matching prefix among its connected networks, its static
+  routes and its default gateway. The next hop must be an address on a shared
+  segment: a direct cable, switches in the same VLAN between the two, or a VLAN
+  interface of the switch the host is cabled to. Access list rules are matched
+  in order like the simulator does (first match; only `deny` blocks) on the
+  outgoing port of one device and the incoming port of the next.
+- **Link aggregation**: see `eth-trunk-up` above.
+
+The simulator does not model DHCP leases (the address allocation helper is a
+stub), so there is no DHCP lab.
+
+The feature also registers commands that the command library already contained
+but the executor did not register (see `feature.commands.ts`): `port link-type`,
+`port default vlan`, `port trunk allow-pass vlan`, `stp`, `portfast`,
+`bpdu guard`, `port-security`, `eth-trunk <id>` (add a port to a group),
+`ip route-static` and `acl rule add` / `acl rule delete`. Two are wrapped:
+`ip route-static` also accepts a dotted mask, and `acl rule add` takes the port
+name (for example `GE0/0/1`) instead of an internal port id.
 In the consoles an interface is selected by its short name, for example
 `interface GE0/0/1`.
 

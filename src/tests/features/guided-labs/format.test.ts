@@ -50,7 +50,7 @@ describe('lab files', () => {
   it.each(LAB_FILE_IDS)('%s only uses documentation addresses', (id) => {
     const addresses = readLabText(id).match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g) ?? [];
     // Documentation ranges, router IDs such as 1.1.1.1 and wildcard masks such as 0.0.0.3.
-    const allowed = /^(192\.0\.2|198\.51\.100|203\.0\.113)\.|^[1-9]\.[1-9]\.[1-9]\.[1-9]$|^0\.0\.0\.\d+$/;
+    const allowed = /^(192\.0\.2|198\.51\.100|203\.0\.113)\.|^[1-9]\.[1-9]\.[1-9]\.[1-9]$|^0\.0\.0\.\d+$|^255\.255\.255\.\d+$/;
     for (const address of addresses) expect(address).toMatch(allowed);
   });
 });

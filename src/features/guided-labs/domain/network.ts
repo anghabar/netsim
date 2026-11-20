@@ -1,6 +1,7 @@
 import type { NetworkCable, NetworkDevice, NetworkPort } from '../../../types/NetworkTypes';
 import { isRecord } from '../../../utils/guards';
 import { networkOf, parseIpv4 } from '../../../utils/ipv4';
+import { createIpReachability } from './l3';
 
 /**
  * Derives protocol state (spanning tree, VLAN reachability, OSPF adjacencies and
@@ -27,6 +28,10 @@ export interface NetworkView {
   ospfAdjacent: (a: NetworkDevice, b: NetworkDevice) => boolean;
   /** Prefixes ("198.51.100.0/24") a router learns from other routers, not its own. */
   ospfLearned: (device: NetworkDevice) => ReadonlySet<string>;
+  /** A ping from the device to the address succeeds, request and reply, honouring routes and access lists. */
+  ipReachable: (from: NetworkDevice, address: string) => boolean;
+  /** Number of links of an Eth-Trunk on `device` that are bundled with a compatible Eth-Trunk on `peer`. */
+  trunkLinks: (device: NetworkDevice, trunkId: string, peer: NetworkDevice) => number;
 }
 
 const DEFAULT_STP_PRIORITY = 32768;
@@ -291,7 +296,31 @@ export function buildNetworkView(devices: readonly NetworkDevice[], cables: read
     return learned;
   };
 
+  // ---- Link aggregation ----------------------------------------------------
+  const modesCompatible = (a: string, b: string): boolean => {
+    if (a === 'static' || b === 'static') return a === b;
+    return a === 'active' || b === 'active';
+  };
+  const trunkLinks = (device: NetworkDevice, trunkId: string, peer: NetworkDevice): number => {
+    const mine = (device.ethTrunks ?? []).find((t) => t.id === trunkId);
+    if (!mine) return 0;
+    const counts = new Map<string, number>();
+    for (const memberId of mine.members) {
+      const port = device.ports.find((p) => p.id === memberId);
+      const other = peerOf.get(`${device.id}/${memberId}`);
+      if (!port || !other || other.device.id !== peer.id || !isUp(port) || !isUp(other.port)) continue;
+      const theirs = (peer.ethTrunks ?? []).find(
+        (t) => t.id === other.port.ethTrunkId && t.members.includes(other.port.id),
+      );
+      if (!theirs || !modesCompatible(mine.mode, theirs.mode)) continue;
+      counts.set(theirs.id, (counts.get(theirs.id) ?? 0) + 1);
+    }
+    return Math.max(0, ...counts.values());
+  };
+
   return {
+    ipReachable: createIpReachability({ devices, peerOf, l2Reachable, isUp }),
+    trunkLinks,
     deviceByName: (name) => byName.get(name),
     portByName: (device, name) => {
       const wanted = canonicalPortName(name);

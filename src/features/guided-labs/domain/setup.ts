@@ -69,6 +69,7 @@ export function buildGuidedLabTopology(
       found.port.config.subnetMask = init.prefix;
     }
     if (init.vlan !== undefined) found.port.config.vlan = init.vlan;
+    if (init.gateway !== undefined) found.device.defaultGateway = init.gateway;
   }
   return ok({ devices, cables });
 }

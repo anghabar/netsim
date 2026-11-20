@@ -8,7 +8,16 @@ import { parseGuidedLab } from '../../../features/guided-labs/domain/guards';
 import type { GuidedLab } from '../../../features/guided-labs/domain/types';
 import type { NetworkCable, NetworkDevice } from '../../../types/NetworkTypes';
 
-export const LAB_FILE_IDS = ['vlans-and-trunks', 'spanning-tree-root', 'ospf-single-area'] as const;
+export const LAB_FILE_IDS = [
+  'vlans-and-trunks',
+  'spanning-tree-root',
+  'ospf-single-area',
+  'static-routes',
+  'inter-vlan-routing',
+  'edge-port-protection',
+  'access-list-block-host',
+  'link-aggregation',
+] as const;
 
 export const labFilePath = (id: string): string =>
   fileURLToPath(new URL(`../../../../public/labs/${id}.json`, import.meta.url));
@@ -81,6 +90,23 @@ export const SOLUTIONS: Record<string, Array<[string, string[]]>> = {
     ['SW1', ['system-view', 'stp enable', 'return']],
     ['SW2', ['system-view', 'stp enable', 'stp root primary', 'return']],
     ['SW3', ['system-view', 'stp enable', 'return']],
+  ],
+  'static-routes': [
+    ['R1', ['system-view', 'ip route-static 203.0.113.0 24 192.0.2.2', 'return']],
+    ['R2', ['system-view', 'ip route-static 198.51.100.0 255.255.255.0 192.0.2.1', 'return']],
+  ],
+  'inter-vlan-routing': [
+    ['SW1', ['system-view', 'vlan batch 10 20', 'interface GE0/0/1', 'port link-type access', 'port default vlan 10', 'quit', 'interface GE0/0/2', 'port link-type access', 'port default vlan 20', 'quit', 'interface vlanif10', 'ip address 192.0.2.1 24', 'quit', 'interface vlanif20', 'ip address 198.51.100.1 24', 'quit', 'return']],
+  ],
+  'edge-port-protection': [
+    ['SW1', ['system-view', 'interface GE0/0/1', 'portfast enable', 'bpdu guard enable', 'port-security enable', 'port-security max-mac-num 1', 'quit', 'interface GE0/0/2', 'portfast enable', 'bpdu guard enable', 'quit', 'return']],
+  ],
+  'access-list-block-host': [
+    ['R1', ['system-view', 'acl rule add BLOCK-PC1 deny GE0/0/1 in src=192.0.2.11/32 dst=198.51.100.0/24', 'return']],
+  ],
+  'link-aggregation': [
+    ['SW1', ['system-view', 'interface eth-trunk 1', 'lacp mode active', 'quit', 'interface GE0/0/1', 'eth-trunk 1', 'quit', 'interface GE0/0/2', 'eth-trunk 1', 'quit', 'return']],
+    ['SW2', ['system-view', 'interface eth-trunk 1', 'lacp mode passive', 'quit', 'interface GE0/0/1', 'eth-trunk 1', 'quit', 'interface GE0/0/2', 'eth-trunk 1', 'quit', 'return']],
   ],
   'ospf-single-area': [
     ['R1', ['system-view', 'ospf 1 router-id 1.1.1.1', 'ospf 1 area 0 network 192.0.2.0 0.0.0.3', 'ospf 1 area 0 network 203.0.113.0 0.0.0.127', 'return']],

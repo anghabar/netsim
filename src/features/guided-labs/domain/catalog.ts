@@ -37,6 +37,41 @@ export const LAB_LISTINGS: readonly LabListing[] = [
     minutes: 30,
     summary: 'Bring up OSPF neighbours and learn every network on every router.',
   },
+  {
+    id: 'static-routes',
+    title: 'Static routes between two routers',
+    level: 'beginner',
+    minutes: 20,
+    summary: 'Make two LANs reach each other through a point-to-point link by writing static routes on both routers.',
+  },
+  {
+    id: 'inter-vlan-routing',
+    title: 'Routing between VLANs',
+    level: 'beginner',
+    minutes: 25,
+    summary: 'Let two VLANs talk to each other through VLAN interfaces on a layer 3 switch.',
+  },
+  {
+    id: 'edge-port-protection',
+    title: 'Protecting the ports that face users',
+    level: 'intermediate',
+    minutes: 25,
+    summary: 'Harden user-facing switch ports with fast start, BPDU guard and port security, and keep the uplink untouched.',
+  },
+  {
+    id: 'access-list-block-host',
+    title: 'Access list: block one host',
+    level: 'intermediate',
+    minutes: 25,
+    summary: 'Stop one workstation from reaching a server network while everyone else keeps working.',
+  },
+  {
+    id: 'link-aggregation',
+    title: 'Link aggregation with LACP',
+    level: 'intermediate',
+    minutes: 25,
+    summary: 'Bundle two parallel links between two switches into one logical link using LACP.',
+  },
 ];
 
 export type LabLoadError = 'unknown-lab' | 'fetch-failed' | 'too-large' | 'invalid-json' | 'invalid-lab';

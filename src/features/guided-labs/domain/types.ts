@@ -27,6 +27,8 @@ export interface LabPortInit {
   ip?: string;
   prefix?: number;
   vlan?: number;
+  /** Default gateway of the device (hosts). */
+  gateway?: string;
 }
 
 export interface LabSetup {
@@ -50,7 +52,27 @@ export type Criterion =
   | (CriterionBase & { type: 'stp-blocked-ports'; count: number })
   | (CriterionBase & { type: 'ospf-enabled'; device: string })
   | (CriterionBase & { type: 'ospf-adjacency'; a: string; b: string })
-  | (CriterionBase & { type: 'ospf-route'; device: string; prefix: string });
+  | (CriterionBase & { type: 'ospf-route'; device: string; prefix: string })
+  | (CriterionBase & { type: 'static-route'; device: string; prefix: string; nextHop: string })
+  | (CriterionBase & { type: 'ip-reachable'; from: string; address: string; expected: boolean })
+  | (CriterionBase & { type: 'vlanif-address'; device: string; vlan: number; address: string; prefix: number })
+  | (CriterionBase & { type: 'eth-trunk-mode'; device: string; trunk: string; mode: TrunkModeCheck })
+  | (CriterionBase & { type: 'eth-trunk-members'; device: string; trunk: string; count: number })
+  | (CriterionBase & { type: 'eth-trunk-up'; a: string; b: string; trunk: string; count: number })
+  | (CriterionBase & {
+      type: 'port-feature';
+      device: string;
+      port: string;
+      feature: PortFeature;
+      enabled: boolean;
+      maxMacs?: number;
+    });
+
+/** `lacp` accepts either LACP mode (active or passive). */
+export type TrunkModeCheck = 'static' | 'active' | 'passive' | 'lacp';
+export const TRUNK_MODE_CHECKS: readonly TrunkModeCheck[] = ['static', 'active', 'passive', 'lacp'];
+export type PortFeature = 'portfast' | 'bpdu-guard' | 'port-security';
+export const PORT_FEATURES: readonly PortFeature[] = ['portfast', 'bpdu-guard', 'port-security'];
 
 export type CriterionType = Criterion['type'];
 
@@ -65,6 +87,13 @@ export const CRITERION_TYPES: readonly CriterionType[] = [
   'ospf-enabled',
   'ospf-adjacency',
   'ospf-route',
+  'static-route',
+  'ip-reachable',
+  'vlanif-address',
+  'eth-trunk-mode',
+  'eth-trunk-members',
+  'eth-trunk-up',
+  'port-feature',
 ];
 
 export interface LabTask {

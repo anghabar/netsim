@@ -1,0 +1,74 @@
+{
+  "formatVersion": 1,
+  "id": "static-routes",
+  "title": "Static routes between two routers",
+  "level": "beginner",
+  "minutes": 20,
+  "summary": "Make two LANs reach each other through a point-to-point link by writing static routes on both routers.",
+  "objectives": [
+    "Read which networks a router already knows",
+    "Write a static route with the right next hop",
+    "Remember that traffic needs a route in both directions"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "R1", "model": "Huawei-AR617" },
+      { "name": "R2", "model": "Huawei-AR617" },
+      { "name": "PC1", "model": "PC" },
+      { "name": "PC2", "model": "PC" }
+    ],
+    "links": [
+      { "from": "R1:GE0/0/0", "to": "R2:GE0/0/0" },
+      { "from": "R1:GE0/0/1", "to": "PC1:eth0" },
+      { "from": "R2:GE0/0/1", "to": "PC2:eth0" }
+    ],
+    "ports": [
+      { "device": "R1", "port": "GE0/0/0", "ip": "192.0.2.1", "prefix": 30 },
+      { "device": "R2", "port": "GE0/0/0", "ip": "192.0.2.2", "prefix": 30 },
+      { "device": "R1", "port": "GE0/0/1", "ip": "198.51.100.1", "prefix": 24 },
+      { "device": "R2", "port": "GE0/0/1", "ip": "203.0.113.1", "prefix": 24 },
+      { "device": "PC1", "port": "eth0", "ip": "198.51.100.10", "prefix": 24, "gateway": "198.51.100.1" },
+      { "device": "PC2", "port": "eth0", "ip": "203.0.113.10", "prefix": 24, "gateway": "203.0.113.1" }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "route-on-r1",
+      "title": "Route from R1 to the R2 LAN",
+      "description": "R1 only knows its own networks. Tell it that 203.0.113.0/24 is reached through R2 at 192.0.2.2.",
+      "hints": [
+        "A static route needs a destination network, its mask and the address of the next router.",
+        "The next hop must be an address on a network R1 is directly connected to.",
+        "Example on R1: system-view, then ip route-static 203.0.113.0 24 192.0.2.2"
+      ],
+      "criteria": [
+        { "type": "static-route", "device": "R1", "prefix": "203.0.113.0/24", "nextHop": "192.0.2.2", "label": "R1 has a route to 203.0.113.0/24 via 192.0.2.2" }
+      ]
+    },
+    {
+      "id": "route-on-r2",
+      "title": "Route from R2 to the R1 LAN",
+      "description": "A ping needs a reply. Give R2 a route to 198.51.100.0/24 through R1 at 192.0.2.1.",
+      "hints": [
+        "The request can arrive and still fail: the reply has to find its way back.",
+        "Example on R2: ip route-static 198.51.100.0 24 192.0.2.1 (a mask such as 255.255.255.0 works too)"
+      ],
+      "criteria": [
+        { "type": "static-route", "device": "R2", "prefix": "198.51.100.0/24", "nextHop": "192.0.2.1", "label": "R2 has a route to 198.51.100.0/24 via 192.0.2.1" }
+      ]
+    },
+    {
+      "id": "verify-reachability",
+      "title": "Verify reachability",
+      "description": "Both PCs must now reach each other and the far end of the link.",
+      "hints": [
+        "If a check fails, compare the next hop on each router with the address of the other router on the link."
+      ],
+      "criteria": [
+        { "type": "ip-reachable", "from": "PC1", "address": "203.0.113.10", "expected": true, "label": "PC1 reaches PC2 (203.0.113.10)" },
+        { "type": "ip-reachable", "from": "PC2", "address": "198.51.100.10", "expected": true, "label": "PC2 reaches PC1 (198.51.100.10)" },
+        { "type": "ip-reachable", "from": "PC1", "address": "192.0.2.2", "expected": true, "label": "PC1 reaches the far end of the link (192.0.2.2)" }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,8 @@ import { err, isRecord, ok, readArray, readEnum, readNumber, readString, type Re
 import { parseIpv4 } from '../../../utils/ipv4';
 import {
   CRITERION_TYPES,
+  PORT_FEATURES,
+  TRUNK_MODE_CHECKS,
   LAB_FORMAT_VERSION,
   type Criterion,
   type GuidedLab,
@@ -17,7 +19,8 @@ export const MAX_CRITERIA_PER_TASK = 16;
 export const MAX_HINTS = 6;
 export const MAX_LAB_BYTES = 40000;
 export const LAB_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,47}$/;
-const NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/;
+const CIDR = /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/;
+const NAME =/^[A-Za-z0-9][A-Za-z0-9_-]{0,23}$/;
 const ENDPOINT = /^([A-Za-z0-9][A-Za-z0-9_-]{0,23}):([A-Za-z0-9/]{1,24})$/;
 const LEVELS: readonly LabLevel[] = ['beginner', 'intermediate', 'advanced'];
 
@@ -85,8 +88,55 @@ export function parseCriterion(value: unknown): Criterion | null {
       return a !== undefined && b !== undefined ? { type, label, a, b } : null;
     case 'ospf-route': {
       const prefix = text(value, 'prefix', 18);
-      return device !== undefined && prefix !== undefined && /^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(prefix)
-        ? { type, label, device, prefix }
+      return device !== undefined && prefix !== undefined && CIDR.test(prefix) ? { type, label, device, prefix } : null;
+    }
+    case 'static-route': {
+      const prefix = text(value, 'prefix', 18);
+      const nextHop = text(value, 'nextHop', 15);
+      return device !== undefined && prefix !== undefined && CIDR.test(prefix) && nextHop !== undefined && parseIpv4(nextHop) !== null
+        ? { type, label, device, prefix, nextHop }
+        : null;
+    }
+    case 'ip-reachable': {
+      const from = text(value, 'from', 24);
+      const address = text(value, 'address', 15);
+      const expected = Object.prototype.hasOwnProperty.call(value, 'expected') ? value.expected : true;
+      return from !== undefined && address !== undefined && parseIpv4(address) !== null && typeof expected === 'boolean'
+        ? { type, label, from, address, expected }
+        : null;
+    }
+    case 'vlanif-address': {
+      const address = text(value, 'address', 15);
+      const prefix = readNumber(value, 'prefix', { min: 1, max: 32, integer: true });
+      return device !== undefined && vlan !== undefined && address !== undefined && parseIpv4(address) !== null && prefix !== undefined
+        ? { type, label, device, vlan, address, prefix }
+        : null;
+    }
+    case 'eth-trunk-mode': {
+      const trunk = readString(value, 'trunk', { maxLength: 4, pattern: /^\d{1,4}$/ });
+      const mode = readEnum(value, 'mode', TRUNK_MODE_CHECKS);
+      return device !== undefined && trunk !== undefined && mode !== undefined ? { type, label, device, trunk, mode } : null;
+    }
+    case 'eth-trunk-members': {
+      const trunk = readString(value, 'trunk', { maxLength: 4, pattern: /^\d{1,4}$/ });
+      const count = readNumber(value, 'count', { min: 1, max: 16, integer: true });
+      return device !== undefined && trunk !== undefined && count !== undefined ? { type, label, device, trunk, count } : null;
+    }
+    case 'eth-trunk-up': {
+      const trunk = readString(value, 'trunk', { maxLength: 4, pattern: /^\d{1,4}$/ });
+      const count = readNumber(value, 'count', { min: 1, max: 16, integer: true });
+      return a !== undefined && b !== undefined && trunk !== undefined && count !== undefined
+        ? { type, label, a, b, trunk, count }
+        : null;
+    }
+    case 'port-feature': {
+      const feature = readEnum(value, 'feature', PORT_FEATURES);
+      const enabled = Object.prototype.hasOwnProperty.call(value, 'enabled') ? value.enabled : true;
+      if (device === undefined || port === undefined || feature === undefined || typeof enabled !== 'boolean') return null;
+      if (!Object.prototype.hasOwnProperty.call(value, 'maxMacs')) return { type, label, device, port, feature, enabled };
+      const maxMacs = readNumber(value, 'maxMacs', { min: 1, max: 64, integer: true });
+      return maxMacs !== undefined && feature === 'port-security'
+        ? { type, label, device, port, feature, enabled, maxMacs }
         : null;
     }
   }
@@ -127,6 +177,11 @@ function parsePortInit(value: unknown): LabPortInit | null {
     const vlan = vlanOf(value, 'vlan');
     if (vlan === undefined) return null;
     init.vlan = vlan;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'gateway')) {
+    const gateway = text(value, 'gateway', 15);
+    if (gateway === undefined || parseIpv4(gateway) === null) return null;
+    init.gateway = gateway;
   }
   return init;
 }
@@ -202,6 +257,7 @@ export function parseGuidedLab(value: unknown): Result<GuidedLab, LabFormatError
       const refs: string[] = [];
       if ('device' in criterion) refs.push(criterion.device);
       if ('a' in criterion) refs.push(criterion.a, criterion.b);
+      if ('from' in criterion) refs.push(criterion.from);
       if (refs.some((name) => !names.has(name))) return fail(`tasks.${task.id}`);
     }
   }

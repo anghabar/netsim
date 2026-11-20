@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "id": "edge-port-protection",
+  "title": "Protecting the ports that face users",
+  "level": "intermediate",
+  "minutes": 25,
+  "summary": "Harden user-facing switch ports with fast start, BPDU guard and port security, and keep the uplink untouched.",
+  "objectives": [
+    "Tell edge ports from uplinks",
+    "Enable fast start and BPDU guard on edge ports only",
+    "Limit how many MAC addresses a user port accepts"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "SW1", "model": "Huawei-S5700-28TP" },
+      { "name": "SW2", "model": "Huawei-S5700-28TP" },
+      { "name": "PC1", "model": "PC" },
+      { "name": "PC2", "model": "PC" }
+    ],
+    "links": [
+      { "from": "PC1:eth0", "to": "SW1:GE0/0/1" },
+      { "from": "PC2:eth0", "to": "SW1:GE0/0/2" },
+      { "from": "SW1:GE0/0/24", "to": "SW2:GE0/0/24" }
+    ],
+    "ports": []
+  },
+  "tasks": [
+    {
+      "id": "fast-start",
+      "title": "Fast start on the edge ports",
+      "description": "GE0/0/1 and GE0/0/2 connect single hosts, so they can go to forwarding at once. GE0/0/24 is the uplink to another switch and must not.",
+      "hints": [
+        "A port that leads to another switch has to take part in the spanning tree calculation.",
+        "Example: interface GE0/0/1, then portfast enable"
+      ],
+      "criteria": [
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/1", "feature": "portfast", "enabled": true, "label": "Fast start is on for GE0/0/1" },
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/2", "feature": "portfast", "enabled": true, "label": "Fast start is on for GE0/0/2" },
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/24", "feature": "portfast", "enabled": false, "label": "Fast start is off for the uplink GE0/0/24" }
+      ]
+    },
+    {
+      "id": "bpdu-guard",
+      "title": "Guard the edge ports",
+      "description": "A user should never connect a switch. Turn on BPDU guard on the two edge ports so a switch plugged in there shuts the port down. The uplink must stay unguarded.",
+      "hints": [
+        "BPDUs are the messages switches send to each other for spanning tree. A host never sends them.",
+        "Example: interface GE0/0/1, then bpdu guard enable"
+      ],
+      "criteria": [
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/1", "feature": "bpdu-guard", "enabled": true, "label": "BPDU guard is on for GE0/0/1" },
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/2", "feature": "bpdu-guard", "enabled": true, "label": "BPDU guard is on for GE0/0/2" },
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/24", "feature": "bpdu-guard", "enabled": false, "label": "BPDU guard is off for the uplink GE0/0/24" }
+      ]
+    },
+    {
+      "id": "limit-macs",
+      "title": "Limit the MAC addresses",
+      "description": "On GE0/0/1 allow exactly one MAC address, so a small switch or hub cannot be hidden behind the port.",
+      "hints": [
+        "Port security has to be turned on before its limit has any effect.",
+        "Example: interface GE0/0/1, then port-security enable, then port-security max-mac-num 1"
+      ],
+      "criteria": [
+        { "type": "port-feature", "device": "SW1", "port": "GE0/0/1", "feature": "port-security", "enabled": true, "maxMacs": 1, "label": "Port security on GE0/0/1 allows one MAC address" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "formatVersion": 1,
+  "id": "access-list-block-host",
+  "title": "Access list: block one host",
+  "level": "intermediate",
+  "minutes": 25,
+  "summary": "Stop one workstation from reaching a server network while everyone else keeps working.",
+  "objectives": [
+    "Write an access list rule that matches one source host and one destination network",
+    "Apply it on the right port and direction",
+    "Check that the rule does not block more than intended"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "R1", "model": "Huawei-AR617" },
+      { "name": "SW1", "model": "Huawei-S5700-28TP" },
+      { "name": "PC1", "model": "PC" },
+      { "name": "PC2", "model": "PC" },
+      { "name": "SRV", "model": "PC" }
+    ],
+    "links": [
+      { "from": "R1:GE0/0/1", "to": "SW1:GE0/0/24" },
+      { "from": "PC1:eth0", "to": "SW1:GE0/0/1" },
+      { "from": "PC2:eth0", "to": "SW1:GE0/0/2" },
+      { "from": "R1:GE0/0/2", "to": "SRV:eth0" }
+    ],
+    "ports": [
+      { "device": "R1", "port": "GE0/0/1", "ip": "192.0.2.1", "prefix": 24 },
+      { "device": "R1", "port": "GE0/0/2", "ip": "198.51.100.1", "prefix": 24 },
+      { "device": "PC1", "port": "eth0", "ip": "192.0.2.11", "prefix": 24, "gateway": "192.0.2.1" },
+      { "device": "PC2", "port": "eth0", "ip": "192.0.2.12", "prefix": 24, "gateway": "192.0.2.1" },
+      { "device": "SRV", "port": "eth0", "ip": "198.51.100.10", "prefix": 24, "gateway": "198.51.100.1" }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "block-pc1",
+      "title": "Block PC1 from the server network",
+      "description": "PC1 (192.0.2.11) must no longer reach the server network 198.51.100.0/24. Add a deny rule on R1, on the port where the workstation traffic arrives.",
+      "hints": [
+        "Rules are matched in order and traffic that matches no deny rule is allowed.",
+        "Match the single host with a /32 and the server network with a /24.",
+        "Example on R1: system-view, then acl rule add BLOCK-PC1 deny GE0/0/1 in src=192.0.2.11/32 dst=198.51.100.0/24"
+      ],
+      "criteria": [
+        { "type": "ip-reachable", "from": "PC1", "address": "198.51.100.10", "expected": false, "label": "PC1 cannot reach the server (198.51.100.10)" }
+      ]
+    },
+    {
+      "id": "keep-the-rest",
+      "title": "Keep everything else working",
+      "description": "PC2 must still reach the server, and PC1 must still reach its own gateway.",
+      "hints": [
+        "A rule without a source address blocks every workstation, not just PC1.",
+        "A rule without a destination blocks PC1 from the gateway too."
+      ],
+      "criteria": [
+        { "type": "ip-reachable", "from": "PC2", "address": "198.51.100.10", "expected": true, "label": "PC2 reaches the server (198.51.100.10)" },
+        { "type": "ip-reachable", "from": "PC1", "address": "192.0.2.1", "expected": true, "label": "PC1 reaches its gateway (192.0.2.1)" },
+        { "type": "ip-reachable", "from": "PC2", "address": "192.0.2.1", "expected": true, "label": "PC2 reaches its gateway (192.0.2.1)" }
+      ]
+    }
+  ]
+}

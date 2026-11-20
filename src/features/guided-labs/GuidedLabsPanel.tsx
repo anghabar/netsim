@@ -6,7 +6,7 @@ import { isLabInProgress } from '../../store/topologyAutosave';
 import { getActiveLab, setActiveLab } from './domain/activeLab';
 import { describeLoadError, LAB_LISTINGS, loadGuidedLab, type LabFetcher } from './domain/catalog';
 import { evaluateLab } from './domain/criteria';
-import { loadProgress, recordCheck, saveProgress, type GuidedProgress } from './domain/progress';
+import { loadActiveLab, loadProgress, recordCheck, saveActiveLab, saveProgress, type GuidedProgress } from './domain/progress';
 import { buildGuidedLabTopology } from './domain/setup';
 import type { GuidedLab, LabCheckResult } from './domain/types';
 
@@ -25,7 +25,9 @@ function ResultMark({ pass }: { pass: boolean | null }) {
 
 export default function GuidedLabsPanel(_props: FeaturePanelProps) {
   const [progress, setProgress] = useState<GuidedProgress>(() => loadProgress(useNetworkStore.getState().runtime.storage));
-  const [lab, setLab] = useState<GuidedLab | null>(getActiveLab);
+  const [lab, setLab] = useState<GuidedLab | null>(
+    () => getActiveLab() ?? loadActiveLab(useNetworkStore.getState().runtime.storage),
+  );
   const [result, setResult] = useState<LabCheckResult | null>(null);
   const [hints, setHints] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
@@ -68,6 +70,7 @@ export default function GuidedLabsPanel(_props: FeaturePanelProps) {
       return;
     }
     setActiveLab(loaded.value);
+    saveActiveLab(state.runtime.storage, loaded.value);
     setLab(loaded.value);
     setResult(null);
     setHints({});
@@ -86,6 +89,7 @@ export default function GuidedLabsPanel(_props: FeaturePanelProps) {
 
   const leave = (): void => {
     setActiveLab(null);
+    saveActiveLab(useNetworkStore.getState().runtime.storage, null);
     setLab(null);
     setResult(null);
     setNotice(null);

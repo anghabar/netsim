@@ -92,6 +92,88 @@ export function evaluateCriterion(criterion: Criterion, view: NetworkView): Crit
         ? pass(criterion)
         : miss(criterion, `${d.hostname} has not learned ${criterion.prefix} through OSPF.`);
     }
+    case 'static-route': {
+      const d = named(criterion.device);
+      if (!d) return miss(criterion, `${criterion.device} was not found.`);
+      const [network, length] = criterion.prefix.split('/');
+      const hit = (d.routingTable ?? []).some(
+        (r) =>
+          r.proto === 'Static' &&
+          r.destination === network &&
+          r.mask === Number(length) &&
+          r.nextHop === criterion.nextHop,
+      );
+      return hit
+        ? pass(criterion)
+        : miss(criterion, `${d.hostname} has no static route to ${criterion.prefix} via ${criterion.nextHop}.`);
+    }
+    case 'ip-reachable': {
+      const d = named(criterion.from);
+      if (!d) return miss(criterion, `${criterion.from} was not found.`);
+      const reachable = view.ipReachable(d, criterion.address);
+      return reachable === criterion.expected
+        ? pass(criterion)
+        : miss(
+            criterion,
+            reachable
+              ? `${d.hostname} can reach ${criterion.address}, but should not.`
+              : `${d.hostname} cannot reach ${criterion.address} (request or reply is lost).`,
+          );
+    }
+    case 'vlanif-address': {
+      const d = named(criterion.device);
+      if (!d) return miss(criterion, `${criterion.device} was not found.`);
+      const v = (d.vlanifs ?? []).find((item) => item.vlanId === criterion.vlan);
+      if (!v) return miss(criterion, `${d.hostname} has no interface for VLAN ${criterion.vlan}.`);
+      return v.ipAddress === criterion.address && v.subnetMask === criterion.prefix
+        ? pass(criterion)
+        : miss(criterion, `The VLAN ${criterion.vlan} interface on ${d.hostname} does not have ${criterion.address}/${criterion.prefix}.`);
+    }
+    case 'eth-trunk-mode': {
+      const d = named(criterion.device);
+      if (!d) return miss(criterion, `${criterion.device} was not found.`);
+      const trunk = (d.ethTrunks ?? []).find((t) => t.id === criterion.trunk);
+      if (!trunk) return miss(criterion, `${d.hostname} has no Eth-Trunk ${criterion.trunk}.`);
+      const ok = criterion.mode === 'lacp' ? trunk.mode === 'active' || trunk.mode === 'passive' : trunk.mode === criterion.mode;
+      return ok ? pass(criterion) : miss(criterion, `Eth-Trunk ${criterion.trunk} on ${d.hostname} is in ${trunk.mode} mode.`);
+    }
+    case 'eth-trunk-members': {
+      const d = named(criterion.device);
+      if (!d) return miss(criterion, `${criterion.device} was not found.`);
+      const trunk = (d.ethTrunks ?? []).find((t) => t.id === criterion.trunk);
+      const members = trunk?.members.length ?? 0;
+      return members >= criterion.count
+        ? pass(criterion)
+        : miss(criterion, `Eth-Trunk ${criterion.trunk} on ${d.hostname} has ${members} member port(s); expected ${criterion.count}.`);
+    }
+    case 'eth-trunk-up': {
+      const a = named(criterion.a);
+      const b = named(criterion.b);
+      if (!a || !b) return miss(criterion, 'A device of this check was not found.');
+      const links = view.trunkLinks(a, criterion.trunk, b);
+      return links >= criterion.count
+        ? pass(criterion)
+        : miss(criterion, `${links} link(s) are bundled between ${a.hostname} and ${b.hostname}; expected ${criterion.count}.`);
+    }
+    case 'port-feature': {
+      const d = named(criterion.device);
+      const p = d ? view.portByName(d, criterion.port) : undefined;
+      if (!d || !p) return miss(criterion, `${criterion.device}:${criterion.port} was not found.`);
+      const security = p.config.portSecurity as { enabled?: boolean; maxMacs?: number } | undefined;
+      const on =
+        criterion.feature === 'portfast'
+          ? p.config.portFast === true
+          : criterion.feature === 'bpdu-guard'
+            ? p.config.bpduGuard === true
+            : security?.enabled === true;
+      if (on !== criterion.enabled) {
+        return miss(criterion, `${criterion.feature} is ${on ? 'on' : 'off'} for ${p.name} on ${d.hostname}.`);
+      }
+      if (criterion.maxMacs !== undefined && security?.maxMacs !== criterion.maxMacs) {
+        return miss(criterion, `Port security on ${p.name} allows ${security?.maxMacs ?? 'no'} MAC address(es), not ${criterion.maxMacs}.`);
+      }
+      return pass(criterion);
+    }
   }
 }
 

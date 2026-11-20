@@ -1,0 +1,64 @@
+{
+  "formatVersion": 1,
+  "id": "link-aggregation",
+  "title": "Link aggregation with LACP",
+  "level": "intermediate",
+  "minutes": 25,
+  "summary": "Bundle two parallel links between two switches into one logical link using LACP.",
+  "objectives": [
+    "Create a link aggregation group on both switches",
+    "Choose LACP modes that can negotiate",
+    "Add the member ports and confirm the bundle forms"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "SW1", "model": "Huawei-S5700-28TP" },
+      { "name": "SW2", "model": "Huawei-S5700-28TP" }
+    ],
+    "links": [
+      { "from": "SW1:GE0/0/1", "to": "SW2:GE0/0/1" },
+      { "from": "SW1:GE0/0/2", "to": "SW2:GE0/0/2" }
+    ],
+    "ports": []
+  },
+  "tasks": [
+    {
+      "id": "create-group",
+      "title": "Create the group with LACP",
+      "description": "On both switches create Eth-Trunk 1 and set it to LACP. At least one side must be active: two passive sides wait for each other forever.",
+      "hints": [
+        "The group is a logical interface of its own.",
+        "Example on each switch: system-view, then interface eth-trunk 1, then lacp mode active"
+      ],
+      "criteria": [
+        { "type": "eth-trunk-mode", "device": "SW1", "trunk": "1", "mode": "lacp", "label": "SW1 Eth-Trunk 1 uses LACP" },
+        { "type": "eth-trunk-mode", "device": "SW2", "trunk": "1", "mode": "lacp", "label": "SW2 Eth-Trunk 1 uses LACP" }
+      ]
+    },
+    {
+      "id": "add-members",
+      "title": "Add the member ports",
+      "description": "Add GE0/0/1 and GE0/0/2 to Eth-Trunk 1 on both switches.",
+      "hints": [
+        "Members are added from the port, not from the group.",
+        "Example: interface GE0/0/1, then eth-trunk 1, then quit, and the same for GE0/0/2"
+      ],
+      "criteria": [
+        { "type": "eth-trunk-members", "device": "SW1", "trunk": "1", "count": 2, "label": "SW1 Eth-Trunk 1 has two member ports" },
+        { "type": "eth-trunk-members", "device": "SW2", "trunk": "1", "count": 2, "label": "SW2 Eth-Trunk 1 has two member ports" }
+      ]
+    },
+    {
+      "id": "bundle-forms",
+      "title": "Check that the bundle forms",
+      "description": "Both cables must now be bundled into one logical link between the switches.",
+      "hints": [
+        "Both sides need the same kind of group: LACP on one side and a static group on the other never bundle.",
+        "Two passive sides never bundle either."
+      ],
+      "criteria": [
+        { "type": "eth-trunk-up", "a": "SW1", "b": "SW2", "trunk": "1", "count": 2, "label": "Two links are bundled between SW1 and SW2" }
+      ]
+    }
+  ]
+}
