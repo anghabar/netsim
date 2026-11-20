@@ -1,0 +1,97 @@
+{
+  "formatVersion": 1,
+  "id": "vlans-and-trunks",
+  "title": "VLANs and trunking",
+  "level": "beginner",
+  "minutes": 20,
+  "summary": "Split two switches into VLANs and carry them over one trunk link.",
+  "objectives": [
+    "Create VLANs on two switches",
+    "Place access ports in the right VLAN",
+    "Carry several VLANs over a single trunk link",
+    "See why hosts in different VLANs cannot talk at layer 2"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "SW1", "model": "Huawei-S5700-28TP" },
+      { "name": "SW2", "model": "Huawei-S5700-28TP" },
+      { "name": "PC1", "model": "PC" },
+      { "name": "PC2", "model": "PC" },
+      { "name": "PC3", "model": "PC" }
+    ],
+    "links": [
+      { "from": "SW1:GE0/0/24", "to": "SW2:GE0/0/24" },
+      { "from": "PC1:eth0", "to": "SW1:GE0/0/1" },
+      { "from": "PC2:eth0", "to": "SW2:GE0/0/1" },
+      { "from": "PC3:eth0", "to": "SW2:GE0/0/2" }
+    ],
+    "ports": [
+      { "device": "PC1", "port": "eth0", "ip": "192.0.2.11", "prefix": 24 },
+      { "device": "PC2", "port": "eth0", "ip": "192.0.2.12", "prefix": 24 },
+      { "device": "PC3", "port": "eth0", "ip": "198.51.100.13", "prefix": 24 },
+      { "device": "SW1", "port": "GE0/0/24", "vlan": 999 },
+      { "device": "SW2", "port": "GE0/0/24", "vlan": 999 }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "create-vlans",
+      "title": "Create the VLANs",
+      "description": "PC1 and PC2 belong to VLAN 10 (sales). PC3 belongs to VLAN 20 (printers). Create both VLANs on both switches.",
+      "hints": [
+        "VLANs are local to a switch: each switch needs its own VLAN table entry.",
+        "Open the console of a switch and enter system view first.",
+        "Example: system-view, then vlan batch 10 20"
+      ],
+      "criteria": [
+        { "type": "vlan-exists", "device": "SW1", "vlan": 10, "label": "VLAN 10 exists on SW1" },
+        { "type": "vlan-exists", "device": "SW1", "vlan": 20, "label": "VLAN 20 exists on SW1" },
+        { "type": "vlan-exists", "device": "SW2", "vlan": 10, "label": "VLAN 10 exists on SW2" },
+        { "type": "vlan-exists", "device": "SW2", "vlan": 20, "label": "VLAN 20 exists on SW2" }
+      ]
+    },
+    {
+      "id": "assign-access-ports",
+      "title": "Assign the access ports",
+      "description": "Put SW1 GE0/0/1 (PC1) and SW2 GE0/0/1 (PC2) in VLAN 10, and SW2 GE0/0/2 (PC3) in VLAN 20.",
+      "hints": [
+        "An access port belongs to exactly one VLAN and carries its frames without a tag.",
+        "Enter the interface, set the link type to access, then set its default VLAN.",
+        "Example: interface GE0/0/1, then port link-type access, then port default vlan 10"
+      ],
+      "criteria": [
+        { "type": "port-access-vlan", "device": "SW1", "port": "GE0/0/1", "vlan": 10, "label": "SW1 GE0/0/1 is an access port in VLAN 10" },
+        { "type": "port-access-vlan", "device": "SW2", "port": "GE0/0/1", "vlan": 10, "label": "SW2 GE0/0/1 is an access port in VLAN 10" },
+        { "type": "port-access-vlan", "device": "SW2", "port": "GE0/0/2", "vlan": 20, "label": "SW2 GE0/0/2 is an access port in VLAN 20" }
+      ]
+    },
+    {
+      "id": "configure-trunk",
+      "title": "Configure the trunk",
+      "description": "The link between the switches (GE0/0/24 on both) is parked as an access port in an unused VLAN, so it carries nothing. Make it a trunk that carries VLANs 10 and 20.",
+      "hints": [
+        "A trunk keeps the VLAN tag so several VLANs can share one cable.",
+        "Both ends must be trunks, and both must allow the VLANs.",
+        "Example: port link-type trunk, then port trunk allow-pass vlan 10 20"
+      ],
+      "criteria": [
+        { "type": "trunk-allows", "device": "SW1", "port": "GE0/0/24", "vlan": 10, "label": "SW1 trunk carries VLAN 10" },
+        { "type": "trunk-allows", "device": "SW1", "port": "GE0/0/24", "vlan": 20, "label": "SW1 trunk carries VLAN 20" },
+        { "type": "trunk-allows", "device": "SW2", "port": "GE0/0/24", "vlan": 10, "label": "SW2 trunk carries VLAN 10" },
+        { "type": "trunk-allows", "device": "SW2", "port": "GE0/0/24", "vlan": 20, "label": "SW2 trunk carries VLAN 20" }
+      ]
+    },
+    {
+      "id": "verify-isolation",
+      "title": "Verify the result",
+      "description": "PC1 and PC2 must now share a broadcast domain across the trunk, while PC3 is isolated from PC2 in its own VLAN.",
+      "hints": [
+        "If PC1 and PC2 still cannot reach each other, check the VLAN on each access port and on both trunk ends."
+      ],
+      "criteria": [
+        { "type": "l2-reachable", "a": "PC1", "b": "PC2", "expected": true, "label": "PC1 reaches PC2 through the trunk" },
+        { "type": "l2-reachable", "a": "PC2", "b": "PC3", "expected": false, "label": "PC2 cannot reach PC3 (different VLAN)" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "id": "spanning-tree-root",
+  "title": "Spanning tree: root bridge and blocked port",
+  "level": "beginner",
+  "minutes": 20,
+  "summary": "Break a switching loop with spanning tree and choose which switch becomes the root.",
+  "objectives": [
+    "Turn spanning tree on in a looped topology",
+    "Choose the root bridge on purpose",
+    "Find out which port spanning tree blocks to remove the loop"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "SW1", "model": "Huawei-S5700-28TP" },
+      { "name": "SW2", "model": "Huawei-S5700-28TP" },
+      { "name": "SW3", "model": "Huawei-S5700-28TP" }
+    ],
+    "links": [
+      { "from": "SW1:GE0/0/1", "to": "SW2:GE0/0/1" },
+      { "from": "SW2:GE0/0/2", "to": "SW3:GE0/0/1" },
+      { "from": "SW3:GE0/0/2", "to": "SW1:GE0/0/2" }
+    ],
+    "ports": []
+  },
+  "tasks": [
+    {
+      "id": "enable-stp",
+      "title": "Enable spanning tree",
+      "description": "Three switches are cabled in a triangle, which is a layer 2 loop. Enable spanning tree on all three.",
+      "hints": [
+        "Without spanning tree a broadcast would circle the triangle forever.",
+        "Spanning tree is a global setting: do it in system view on each switch.",
+        "Example: system-view, then stp enable"
+      ],
+      "criteria": [
+        { "type": "stp-enabled", "device": "SW1", "label": "Spanning tree is on for SW1" },
+        { "type": "stp-enabled", "device": "SW2", "label": "Spanning tree is on for SW2" },
+        { "type": "stp-enabled", "device": "SW3", "label": "Spanning tree is on for SW3" }
+      ]
+    },
+    {
+      "id": "choose-root",
+      "title": "Make SW2 the root bridge",
+      "description": "The switch with the lowest bridge priority becomes the root. Lower the priority of SW2 so it wins the election.",
+      "hints": [
+        "Every switch starts with the same priority, so the lowest MAC address wins by default.",
+        "You only need to change SW2.",
+        "Example on SW2: stp root primary"
+      ],
+      "criteria": [
+        { "type": "stp-root", "device": "SW2", "label": "SW2 is the root bridge" }
+      ]
+    },
+    {
+      "id": "find-blocked-port",
+      "title": "Check that the loop is gone",
+      "description": "With a root elected, spanning tree must block exactly one port in the triangle. It is on the link that does not touch the root.",
+      "hints": [
+        "Look at the link between SW1 and SW3: both are one hop from the root, so one side has to give way.",
+        "If nothing is blocked, spanning tree is not enabled on every switch."
+      ],
+      "criteria": [
+        { "type": "stp-blocked-ports", "count": 1, "label": "Exactly one port is blocked" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "formatVersion": 1,
+  "id": "ospf-single-area",
+  "title": "Single-area OSPF with three routers",
+  "level": "intermediate",
+  "minutes": 30,
+  "summary": "Bring up OSPF neighbours and learn every network on every router.",
+  "objectives": [
+    "Start OSPF and give each router a unique router ID",
+    "Advertise the right networks in area 0",
+    "Form neighbour relationships on both links",
+    "Learn every remote network on every router"
+  ],
+  "setup": {
+    "devices": [
+      { "name": "R1", "model": "Huawei-AR617" },
+      { "name": "R2", "model": "Huawei-AR617" },
+      { "name": "R3", "model": "Huawei-AR617" },
+      { "name": "PC1", "model": "PC" },
+      { "name": "PC2", "model": "PC" }
+    ],
+    "links": [
+      { "from": "R1:GE0/0/0", "to": "R2:GE0/0/0" },
+      { "from": "R2:GE0/0/1", "to": "R3:GE0/0/0" },
+      { "from": "R1:GE0/0/1", "to": "PC1:eth0" },
+      { "from": "R3:GE0/0/1", "to": "PC2:eth0" }
+    ],
+    "ports": [
+      { "device": "R1", "port": "GE0/0/0", "ip": "192.0.2.1", "prefix": 30 },
+      { "device": "R2", "port": "GE0/0/0", "ip": "192.0.2.2", "prefix": 30 },
+      { "device": "R2", "port": "GE0/0/1", "ip": "198.51.100.1", "prefix": 30 },
+      { "device": "R3", "port": "GE0/0/0", "ip": "198.51.100.2", "prefix": 30 },
+      { "device": "R1", "port": "GE0/0/1", "ip": "203.0.113.1", "prefix": 25 },
+      { "device": "R3", "port": "GE0/0/1", "ip": "203.0.113.129", "prefix": 25 },
+      { "device": "PC1", "port": "eth0", "ip": "203.0.113.11", "prefix": 25 },
+      { "device": "PC2", "port": "eth0", "ip": "203.0.113.139", "prefix": 25 }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "start-ospf",
+      "title": "Start OSPF with unique router IDs",
+      "description": "Start OSPF process 1 on every router. Use router IDs 1.1.1.1 (R1), 2.2.2.2 (R2) and 3.3.3.3 (R3).",
+      "hints": [
+        "Two routers with the same router ID will not become neighbours.",
+        "In system view, the router ID goes on the same line as the process number.",
+        "Example on R1: system-view, then ospf 1 router-id 1.1.1.1"
+      ],
+      "criteria": [
+        { "type": "ospf-enabled", "device": "R1", "label": "OSPF is running on R1" },
+        { "type": "ospf-enabled", "device": "R2", "label": "OSPF is running on R2" },
+        { "type": "ospf-enabled", "device": "R3", "label": "OSPF is running on R3" }
+      ]
+    },
+    {
+      "id": "advertise-networks",
+      "title": "Advertise the connected networks",
+      "description": "Put every connected network in area 0. A network statement uses a wildcard mask, the inverse of the subnet mask (a /30 is 0.0.0.3, a /25 is 0.0.0.127).",
+      "hints": [
+        "R1 has two networks to advertise: the link to R2 (192.0.2.0/30) and its LAN (203.0.113.0/25).",
+        "A router only forms a neighbour on a link whose address is covered by one of its network statements.",
+        "Example on R1: ospf 1 area 0 network 192.0.2.0 0.0.0.3 and ospf 1 area 0 network 203.0.113.0 0.0.0.127. R2 has the two link networks (192.0.2.0/30 and 198.51.100.0/30). R3 has 198.51.100.0/30 and 203.0.113.128/25."
+      ],
+      "criteria": [
+        { "type": "ospf-adjacency", "a": "R1", "b": "R2", "label": "R1 and R2 are OSPF neighbours" },
+        { "type": "ospf-adjacency", "a": "R2", "b": "R3", "label": "R2 and R3 are OSPF neighbours" }
+      ]
+    },
+    {
+      "id": "full-reachability",
+      "title": "Learn every network",
+      "description": "Each router must learn, through OSPF, the networks it is not directly connected to.",
+      "hints": [
+        "If a route is missing, a LAN network statement is probably missing on the router that owns that LAN.",
+        "R1 and R3 each own a LAN; R2 must learn both of them."
+      ],
+      "criteria": [
+        { "type": "ospf-route", "device": "R1", "prefix": "198.51.100.0/30", "label": "R1 learns 198.51.100.0/30" },
+        { "type": "ospf-route", "device": "R1", "prefix": "203.0.113.128/25", "label": "R1 learns the R3 LAN 203.0.113.128/25" },
+        { "type": "ospf-route", "device": "R2", "prefix": "203.0.113.0/25", "label": "R2 learns the R1 LAN 203.0.113.0/25" },
+        { "type": "ospf-route", "device": "R2", "prefix": "203.0.113.128/25", "label": "R2 learns the R3 LAN 203.0.113.128/25" },
+        { "type": "ospf-route", "device": "R3", "prefix": "192.0.2.0/30", "label": "R3 learns 192.0.2.0/30" },
+        { "type": "ospf-route", "device": "R3", "prefix": "203.0.113.0/25", "label": "R3 learns the R1 LAN 203.0.113.0/25" }
+      ]
+    }
+  ]
+}
