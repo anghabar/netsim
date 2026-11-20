@@ -29,12 +29,31 @@ export interface LabPortInit {
   vlan?: number;
   /** Default gateway of the device (hosts). */
   gateway?: string;
+  /** Port mode, for a starting state that already has a trunk. */
+  mode?: 'access' | 'trunk';
+  /** VLANs a trunk port carries besides its native VLAN. */
+  allowedVlans?: number[];
+}
+
+/** VLANs that already exist on a switch when the lab starts. */
+export interface LabVlanInit {
+  device: string;
+  vlans: number[];
+}
+
+/** A static route that already exists when the lab starts ("198.51.100.0/24"). */
+export interface LabRouteInit {
+  device: string;
+  prefix: string;
+  nextHop: string;
 }
 
 export interface LabSetup {
   devices: LabDeviceSpec[];
   links: LabLinkSpec[];
   ports: LabPortInit[];
+  vlans?: LabVlanInit[];
+  routes?: LabRouteInit[];
 }
 
 interface CriterionBase {
@@ -55,6 +74,14 @@ export type Criterion =
   | (CriterionBase & { type: 'ospf-route'; device: string; prefix: string })
   | (CriterionBase & { type: 'static-route'; device: string; prefix: string; nextHop: string })
   | (CriterionBase & { type: 'ip-reachable'; from: string; address: string; expected: boolean })
+  | (CriterionBase & {
+      type: 'service-reachable';
+      from: string;
+      address: string;
+      protocol: ServiceProtocol;
+      port: number;
+      expected: boolean;
+    })
   | (CriterionBase & { type: 'vlanif-address'; device: string; vlan: number; address: string; prefix: number })
   | (CriterionBase & { type: 'eth-trunk-mode'; device: string; trunk: string; mode: TrunkModeCheck })
   | (CriterionBase & { type: 'eth-trunk-members'; device: string; trunk: string; count: number })
@@ -71,6 +98,8 @@ export type Criterion =
 /** `lacp` accepts either LACP mode (active or passive). */
 export type TrunkModeCheck = 'static' | 'active' | 'passive' | 'lacp';
 export const TRUNK_MODE_CHECKS: readonly TrunkModeCheck[] = ['static', 'active', 'passive', 'lacp'];
+export type ServiceProtocol = 'tcp' | 'udp';
+export const SERVICE_PROTOCOLS: readonly ServiceProtocol[] = ['tcp', 'udp'];
 export type PortFeature = 'portfast' | 'bpdu-guard' | 'port-security';
 export const PORT_FEATURES: readonly PortFeature[] = ['portfast', 'bpdu-guard', 'port-security'];
 
@@ -89,6 +118,7 @@ export const CRITERION_TYPES: readonly CriterionType[] = [
   'ospf-route',
   'static-route',
   'ip-reachable',
+  'service-reachable',
   'vlanif-address',
   'eth-trunk-mode',
   'eth-trunk-members',

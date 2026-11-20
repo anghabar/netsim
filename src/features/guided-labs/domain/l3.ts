@@ -15,7 +15,24 @@ export interface L3Context {
   peerOf: ReadonlyMap<string, { device: NetworkDevice; port: NetworkPort }>;
   l2Reachable: (a: NetworkDevice, b: NetworkDevice) => boolean;
   isUp: (port: NetworkPort) => boolean;
+  /** Routes the router learned through OSPF, with the neighbour address to send to. */
+  ospfRoutes?: (device: NetworkDevice) => OspfRoute[];
 }
+
+export interface OspfRoute {
+  net: string;
+  prefix: number;
+  nextHop: string;
+}
+
+/** A transport flow the access lists can match on. */
+interface Flow {
+  protocol?: string;
+  srcPort?: number;
+  dstPort?: number;
+}
+
+const CLIENT_PORT = 49152;
 
 interface Iface {
   device: NetworkDevice;
@@ -33,7 +50,9 @@ const inside = (ip: string, net: string, prefix: number): boolean => {
   return mine !== null && mine === net;
 };
 
-export function createIpReachability(ctx: L3Context): (from: NetworkDevice, address: string) => boolean {
+export function createIpReachability(
+  ctx: L3Context,
+): (from: NetworkDevice, address: string, service?: { protocol: string; port: number }) => boolean {
   const ifacesOf = (device: NetworkDevice): Iface[] => {
     const out: Iface[] = [];
     if (device.type !== 'Switch') {
@@ -100,6 +119,9 @@ export function createIpReachability(ctx: L3Context): (from: NetworkDevice, addr
     const mine = ifaces(d);
     const found: Candidate[] = [];
     for (const i of mine) if (inside(dst, i.net, i.prefix)) found.push({ prefix: i.prefix, via: i, nextHop: dst });
+    for (const r of ctx.ospfRoutes?.(d) ?? []) {
+      if (inside(dst, r.net, r.prefix)) found.push({ prefix: r.prefix, via: null, nextHop: r.nextHop });
+    }
     for (const r of staticRoutes(d)) {
       if (typeof r.destination !== 'string' || typeof r.nextHop !== 'string' || typeof r.mask !== 'number') continue;
       const net = networkOf(r.destination, r.mask);
@@ -118,18 +140,18 @@ export function createIpReachability(ctx: L3Context): (from: NetworkDevice, addr
   const owns = (d: NetworkDevice, ip: string): boolean => ifaces(d).some((i) => i.ip === ip);
 
   /** Follows one packet; returns the device that received it, or null when it is lost or denied. */
-  const send = (from: NetworkDevice, srcIp: string, dstIp: string): NetworkDevice | null => {
+  const send = (from: NetworkDevice, srcIp: string, dstIp: string, flow: Flow = {}): NetworkDevice | null => {
     let here = from;
     for (let hops = 0; hops < MAX_HOPS; hops += 1) {
       if (owns(here, dstIp)) return here;
       const next = step(here, dstIp);
       if (!next) return null;
       if (next.from.port) {
-        const rule = findRuleMatch(here.aclRules, next.from.port.id, 'out', srcIp, dstIp);
+        const rule = findRuleMatch(here.aclRules, next.from.port.id, 'out', srcIp, dstIp, flow.protocol, flow.srcPort, flow.dstPort);
         if (rule?.action === 'deny') return null;
       }
       if (next.to.port) {
-        const rule = findRuleMatch(next.to.device.aclRules, next.to.port.id, 'in', srcIp, dstIp);
+        const rule = findRuleMatch(next.to.device.aclRules, next.to.port.id, 'in', srcIp, dstIp, flow.protocol, flow.srcPort, flow.dstPort);
         if (rule?.action === 'deny') return null;
       }
       here = next.to.device;
@@ -138,10 +160,12 @@ export function createIpReachability(ctx: L3Context): (from: NetworkDevice, addr
   };
 
   /** A ping succeeds when the request arrives and the reply finds its way back. */
-  return (from, address) => {
+  return (from, address, service) => {
     const own = ifaces(from)[0];
     if (!own) return false;
-    const target = send(from, own.ip, address);
-    return target !== null && send(target, address, own.ip) === from;
+    const request: Flow = service ? { protocol: service.protocol, srcPort: CLIENT_PORT, dstPort: service.port } : {};
+    const reply: Flow = service ? { protocol: service.protocol, srcPort: service.port, dstPort: CLIENT_PORT } : {};
+    const target = send(from, own.ip, address, request);
+    return target !== null && send(target, address, own.ip, reply) === from;
   };
 }

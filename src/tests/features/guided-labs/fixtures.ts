@@ -17,6 +17,10 @@ export const LAB_FILE_IDS = [
   'edge-port-protection',
   'access-list-block-host',
   'link-aggregation',
+  'ospf-two-areas',
+  'default-route',
+  'fix-the-broken-network',
+  'acl-allow-web-only',
 ] as const;
 
 export const labFilePath = (id: string): string =>
@@ -107,6 +111,23 @@ export const SOLUTIONS: Record<string, Array<[string, string[]]>> = {
   'link-aggregation': [
     ['SW1', ['system-view', 'interface eth-trunk 1', 'lacp mode active', 'quit', 'interface GE0/0/1', 'eth-trunk 1', 'quit', 'interface GE0/0/2', 'eth-trunk 1', 'quit', 'return']],
     ['SW2', ['system-view', 'interface eth-trunk 1', 'lacp mode passive', 'quit', 'interface GE0/0/1', 'eth-trunk 1', 'quit', 'interface GE0/0/2', 'eth-trunk 1', 'quit', 'return']],
+  ],
+  'ospf-two-areas': [
+    ['R1', ['system-view', 'ospf 1 router-id 1.1.1.1', 'ospf 1 area 0 network 198.51.100.0 0.0.0.3', 'ospf 1 area 0 network 192.0.2.0 0.0.0.127', 'return']],
+    ['R2', ['system-view', 'ospf 1 router-id 2.2.2.2', 'ospf 1 area 0 network 198.51.100.0 0.0.0.3', 'ospf 1 area 1 network 198.51.100.4 0.0.0.3', 'return']],
+    ['R3', ['system-view', 'ospf 1 router-id 3.3.3.3', 'ospf 1 area 1 network 198.51.100.4 0.0.0.3', 'ospf 1 area 1 network 203.0.113.0 0.0.0.127', 'return']],
+  ],
+  'default-route': [
+    ['R1', ['system-view', 'ip route-static 0.0.0.0 0 198.51.100.2', 'return']],
+    ['ISP', ['system-view', 'ip route-static 192.0.2.0 255.255.255.0 198.51.100.1', 'return']],
+  ],
+  'fix-the-broken-network': [
+    ['SW1', ['system-view', 'interface GE0/0/24', 'port trunk allow-pass vlan 10', 'quit', 'return']],
+    ['SW2', ['system-view', 'interface GE0/0/24', 'port trunk allow-pass vlan 10', 'quit', 'return']],
+    ['R1', ['system-view', 'undo ip route-static 203.0.113.0 24 198.51.100.9', 'ip route-static 203.0.113.0 24 198.51.100.2', 'return']],
+  ],
+  'acl-allow-web-only': [
+    ['R1', ['system-view', 'acl rule add WEB-OK permit GE0/0/1 in protocol=tcp dstport=80 src=192.0.2.0/24 dst=198.51.100.10/32', 'acl rule add DENY-REST deny GE0/0/1 in src=192.0.2.0/24 dst=198.51.100.10/32', 'return']],
   ],
   'ospf-single-area': [
     ['R1', ['system-view', 'ospf 1 router-id 1.1.1.1', 'ospf 1 area 0 network 192.0.2.0 0.0.0.3', 'ospf 1 area 0 network 203.0.113.0 0.0.0.127', 'return']],

@@ -1,0 +1,240 @@
+{
+  "formatVersion": 1,
+  "id": "fix-the-broken-network",
+  "title": "Troubleshooting: fix a broken network",
+  "level": "intermediate",
+  "minutes": 30,
+  "summary": "A workstation cannot reach a server. Find the two faults (a trunk that drops a VLAN and a wrong static route) and repair them.",
+  "objectives": [
+    "Find where a path breaks, layer by layer",
+    "Repair a trunk that does not carry a VLAN",
+    "Replace a static route that points at the wrong next hop"
+  ],
+  "setup": {
+    "devices": [
+      {
+        "name": "SW1",
+        "model": "Huawei-S5700-28TP"
+      },
+      {
+        "name": "SW2",
+        "model": "Huawei-S5700-28TP"
+      },
+      {
+        "name": "R1",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "R2",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "PC1",
+        "model": "PC"
+      },
+      {
+        "name": "SRV",
+        "model": "PC"
+      }
+    ],
+    "links": [
+      {
+        "from": "PC1:eth0",
+        "to": "SW1:GE0/0/1"
+      },
+      {
+        "from": "SW1:GE0/0/24",
+        "to": "SW2:GE0/0/24"
+      },
+      {
+        "from": "SW2:GE0/0/1",
+        "to": "R1:GE0/0/0"
+      },
+      {
+        "from": "R1:GE0/0/1",
+        "to": "R2:GE0/0/0"
+      },
+      {
+        "from": "R2:GE0/0/1",
+        "to": "SRV:eth0"
+      }
+    ],
+    "vlans": [
+      {
+        "device": "SW1",
+        "vlans": [
+          10,
+          20
+        ]
+      },
+      {
+        "device": "SW2",
+        "vlans": [
+          10,
+          20
+        ]
+      }
+    ],
+    "ports": [
+      {
+        "device": "SW1",
+        "port": "GE0/0/1",
+        "mode": "access",
+        "vlan": 10
+      },
+      {
+        "device": "SW1",
+        "port": "GE0/0/24",
+        "mode": "trunk",
+        "allowedVlans": [
+          20
+        ]
+      },
+      {
+        "device": "SW2",
+        "port": "GE0/0/24",
+        "mode": "trunk",
+        "allowedVlans": [
+          20
+        ]
+      },
+      {
+        "device": "SW2",
+        "port": "GE0/0/1",
+        "mode": "access",
+        "vlan": 10
+      },
+      {
+        "device": "R1",
+        "port": "GE0/0/0",
+        "ip": "192.0.2.1",
+        "prefix": 24
+      },
+      {
+        "device": "R1",
+        "port": "GE0/0/1",
+        "ip": "198.51.100.1",
+        "prefix": 30
+      },
+      {
+        "device": "R2",
+        "port": "GE0/0/0",
+        "ip": "198.51.100.2",
+        "prefix": 30
+      },
+      {
+        "device": "R2",
+        "port": "GE0/0/1",
+        "ip": "203.0.113.1",
+        "prefix": 24
+      },
+      {
+        "device": "PC1",
+        "port": "eth0",
+        "ip": "192.0.2.11",
+        "prefix": 24,
+        "gateway": "192.0.2.1"
+      },
+      {
+        "device": "SRV",
+        "port": "eth0",
+        "ip": "203.0.113.10",
+        "prefix": 24,
+        "gateway": "203.0.113.1"
+      }
+    ],
+    "routes": [
+      {
+        "device": "R1",
+        "prefix": "203.0.113.0/24",
+        "nextHop": "198.51.100.9"
+      },
+      {
+        "device": "R2",
+        "prefix": "192.0.2.0/24",
+        "nextHop": "198.51.100.1"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "fix-trunk",
+      "title": "Repair the layer 2 path",
+      "description": "PC1 (VLAN 10) cannot even reach its gateway R1. Both ends of the link between SW1 and SW2 are trunks, but one VLAN is not carried. Fix it on both switches.",
+      "hints": [
+        "Start at the workstation and move outwards: gateway first, then the next hop, then the server.",
+        "A trunk only carries the VLANs it allows. Look at which VLANs the trunk allows.",
+        "Example on SW1 and SW2: system-view, interface GE0/0/24, port trunk allow-pass vlan 10"
+      ],
+      "criteria": [
+        {
+          "type": "trunk-allows",
+          "device": "SW1",
+          "port": "GE0/0/24",
+          "vlan": 10,
+          "label": "SW1 GE0/0/24 carries VLAN 10"
+        },
+        {
+          "type": "trunk-allows",
+          "device": "SW2",
+          "port": "GE0/0/24",
+          "vlan": 10,
+          "label": "SW2 GE0/0/24 carries VLAN 10"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "192.0.2.1",
+          "label": "PC1 reaches its gateway (192.0.2.1)"
+        }
+      ]
+    },
+    {
+      "id": "fix-route",
+      "title": "Repair the route on R1",
+      "description": "R1 has a static route to the server network, but its next hop is not on the link to R2. Replace it with a route via 198.51.100.2.",
+      "hints": [
+        "R1 and R2 share the link 198.51.100.0/30. A next hop must be an address on a shared link.",
+        "Remove the wrong route first: undo ip route-static followed by the network, the prefix length and the next hop. A second route to the same network does not replace the first one.",
+        "Example on R1: undo ip route-static 203.0.113.0 24 198.51.100.9 and then ip route-static 203.0.113.0 24 198.51.100.2"
+      ],
+      "criteria": [
+        {
+          "type": "static-route",
+          "device": "R1",
+          "prefix": "203.0.113.0/24",
+          "nextHop": "198.51.100.2",
+          "label": "R1 has a route to 203.0.113.0/24 via 198.51.100.2"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "R1",
+          "address": "203.0.113.10",
+          "label": "R1 reaches the server (203.0.113.10)"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "title": "Check the whole path",
+      "description": "PC1 must reach the server and the server must reach PC1.",
+      "hints": [
+        "If this still fails, test each hop in turn from PC1."
+      ],
+      "criteria": [
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "203.0.113.10",
+          "label": "PC1 reaches the server (203.0.113.10)"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "SRV",
+          "address": "192.0.2.11",
+          "label": "The server reaches PC1 (192.0.2.11)"
+        }
+      ]
+    }
+  ]
+}

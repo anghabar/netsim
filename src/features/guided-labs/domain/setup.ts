@@ -70,6 +70,22 @@ export function buildGuidedLabTopology(
     }
     if (init.vlan !== undefined) found.port.config.vlan = init.vlan;
     if (init.gateway !== undefined) found.device.defaultGateway = init.gateway;
+    if (init.mode !== undefined) found.port.config.mode = init.mode;
+    if (init.allowedVlans !== undefined) found.port.config.allowedVlans = [...init.allowedVlans];
+  }
+  for (const init of lab.setup.vlans ?? []) {
+    const device = byName.get(init.device);
+    if (!device) return err({ code: 'unknown-endpoint', detail: init.device });
+    device.vlans = [...new Set([...device.vlans, ...init.vlans])];
+  }
+  for (const init of lab.setup.routes ?? []) {
+    const device = byName.get(init.device);
+    if (!device) return err({ code: 'unknown-endpoint', detail: init.device });
+    const [destination, length] = init.prefix.split('/');
+    device.routingTable = [
+      ...(device.routingTable ?? []),
+      { destination, mask: Number(length), proto: 'Static', pre: 60, cost: 0, nextHop: init.nextHop, interface: '' },
+    ];
   }
   return ok({ devices, cables });
 }

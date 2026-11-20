@@ -3,12 +3,15 @@ import { parseIpv4 } from '../../../utils/ipv4';
 import {
   CRITERION_TYPES,
   PORT_FEATURES,
+  SERVICE_PROTOCOLS,
   TRUNK_MODE_CHECKS,
   LAB_FORMAT_VERSION,
   type Criterion,
   type GuidedLab,
   type LabLevel,
   type LabPortInit,
+  type LabRouteInit,
+  type LabVlanInit,
   type LabTask,
 } from './types';
 
@@ -105,6 +108,21 @@ export function parseCriterion(value: unknown): Criterion | null {
         ? { type, label, from, address, expected }
         : null;
     }
+    case 'service-reachable': {
+      const from = text(value, 'from', 24);
+      const address = text(value, 'address', 15);
+      const protocol = readEnum(value, 'protocol', SERVICE_PROTOCOLS);
+      const port = readNumber(value, 'port', { min: 1, max: 65535, integer: true });
+      const expected = Object.prototype.hasOwnProperty.call(value, 'expected') ? value.expected : true;
+      return from !== undefined &&
+        address !== undefined &&
+        parseIpv4(address) !== null &&
+        protocol !== undefined &&
+        port !== undefined &&
+        typeof expected === 'boolean'
+        ? { type, label, from, address, protocol, port, expected }
+        : null;
+    }
     case 'vlanif-address': {
       const address = text(value, 'address', 15);
       const prefix = readNumber(value, 'prefix', { min: 1, max: 32, integer: true });
@@ -183,7 +201,44 @@ function parsePortInit(value: unknown): LabPortInit | null {
     if (gateway === undefined || parseIpv4(gateway) === null) return null;
     init.gateway = gateway;
   }
+  if (Object.prototype.hasOwnProperty.call(value, 'mode')) {
+    const mode = readEnum(value, 'mode', ['access', 'trunk'] as const);
+    if (mode === undefined) return null;
+    init.mode = mode;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'allowedVlans')) {
+    const list = vlanList(value, 'allowedVlans');
+    if (list === undefined) return null;
+    init.allowedVlans = list;
+  }
   return init;
+}
+
+function vlanList(rec: Record<string, unknown>, field: string): number[] | undefined {
+  const raw = readArray(rec, field, { maxItems: 16 });
+  if (raw === undefined) return undefined;
+  const out: number[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'number' || !Number.isInteger(item) || item < 1 || item > 4094) return undefined;
+    out.push(item);
+  }
+  return out;
+}
+
+function parseVlanInit(value: unknown): LabVlanInit | null {
+  if (!isRecord(value)) return null;
+  const device = text(value, 'device', 24);
+  const vlans = vlanList(value, 'vlans');
+  return device !== undefined && vlans !== undefined ? { device, vlans } : null;
+}
+
+function parseRouteInit(value: unknown): LabRouteInit | null {
+  if (!isRecord(value)) return null;
+  const device = text(value, 'device', 24);
+  const prefix = text(value, 'prefix', 18);
+  const nextHop = text(value, 'nextHop', 15);
+  if (device === undefined || prefix === undefined || !CIDR.test(prefix) || nextHop === undefined) return null;
+  return parseIpv4(nextHop) === null ? null : { device, prefix, nextHop };
 }
 
 /** Validates a lab definition from untrusted data and rebuilds it field by field. */
@@ -241,6 +296,21 @@ export function parseGuidedLab(value: unknown): Result<GuidedLab, LabFormatError
     ports.push(init);
   }
 
+  const rawVlans = readArray(setup, 'vlans', { maxItems: 24 }) ?? [];
+  const vlanInits: LabVlanInit[] = [];
+  for (const raw of rawVlans) {
+    const init = parseVlanInit(raw);
+    if (init === null || !names.has(init.device)) return fail('setup.vlans');
+    vlanInits.push(init);
+  }
+  const rawRoutes = readArray(setup, 'routes', { maxItems: 24 }) ?? [];
+  const routeInits: LabRouteInit[] = [];
+  for (const raw of rawRoutes) {
+    const init = parseRouteInit(raw);
+    if (init === null || !names.has(init.device)) return fail('setup.routes');
+    routeInits.push(init);
+  }
+
   const rawTasks = readArray(value, 'tasks', { maxItems: MAX_TASKS });
   if (rawTasks === undefined || rawTasks.length === 0) return fail('tasks');
   const tasks: LabTask[] = [];
@@ -269,7 +339,13 @@ export function parseGuidedLab(value: unknown): Result<GuidedLab, LabFormatError
     minutes,
     summary,
     objectives,
-    setup: { devices, links, ports },
+    setup: {
+      devices,
+      links,
+      ports,
+      ...(vlanInits.length > 0 ? { vlans: vlanInits } : {}),
+      ...(routeInits.length > 0 ? { routes: routeInits } : {}),
+    },
     tasks,
   });
 }

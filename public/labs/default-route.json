@@ -1,0 +1,153 @@
+{
+  "formatVersion": 1,
+  "id": "default-route",
+  "title": "Default route to the internet",
+  "level": "beginner",
+  "minutes": 20,
+  "summary": "Send everything that is not local to an upstream router with one default route, and give that router a way back.",
+  "objectives": [
+    "Write a default route (0.0.0.0/0) with a next hop",
+    "See why one route replaces a route per remote network",
+    "Add the return route on the upstream router"
+  ],
+  "setup": {
+    "devices": [
+      {
+        "name": "R1",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "ISP",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "PC1",
+        "model": "PC"
+      },
+      {
+        "name": "WEB",
+        "model": "PC"
+      }
+    ],
+    "links": [
+      {
+        "from": "R1:GE0/0/0",
+        "to": "ISP:GE0/0/0"
+      },
+      {
+        "from": "R1:GE0/0/1",
+        "to": "PC1:eth0"
+      },
+      {
+        "from": "ISP:GE0/0/1",
+        "to": "WEB:eth0"
+      }
+    ],
+    "ports": [
+      {
+        "device": "R1",
+        "port": "GE0/0/0",
+        "ip": "198.51.100.1",
+        "prefix": 30
+      },
+      {
+        "device": "ISP",
+        "port": "GE0/0/0",
+        "ip": "198.51.100.2",
+        "prefix": 30
+      },
+      {
+        "device": "R1",
+        "port": "GE0/0/1",
+        "ip": "192.0.2.1",
+        "prefix": 24
+      },
+      {
+        "device": "ISP",
+        "port": "GE0/0/1",
+        "ip": "203.0.113.1",
+        "prefix": 24
+      },
+      {
+        "device": "PC1",
+        "port": "eth0",
+        "ip": "192.0.2.11",
+        "prefix": 24,
+        "gateway": "192.0.2.1"
+      },
+      {
+        "device": "WEB",
+        "port": "eth0",
+        "ip": "203.0.113.10",
+        "prefix": 24,
+        "gateway": "203.0.113.1"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "default-route",
+      "title": "Write the default route on R1",
+      "description": "R1 only knows its own networks. Add a default route that sends every other destination to the ISP router at 198.51.100.2.",
+      "hints": [
+        "A default route is the route to 0.0.0.0 with a prefix length of 0: it matches anything no other route matches.",
+        "Example on R1: system-view, then ip route-static 0.0.0.0 0 198.51.100.2"
+      ],
+      "criteria": [
+        {
+          "type": "static-route",
+          "device": "R1",
+          "prefix": "0.0.0.0/0",
+          "nextHop": "198.51.100.2",
+          "label": "R1 has a default route via 198.51.100.2"
+        }
+      ]
+    },
+    {
+      "id": "return-route",
+      "title": "Give the ISP router a way back",
+      "description": "Traffic leaves, but the replies must come back. The ISP router must know where the 192.0.2.0/24 network is.",
+      "hints": [
+        "The ISP router has no route to 192.0.2.0/24, so it drops the replies.",
+        "Example on ISP: ip route-static 192.0.2.0 24 198.51.100.1"
+      ],
+      "criteria": [
+        {
+          "type": "static-route",
+          "device": "ISP",
+          "prefix": "192.0.2.0/24",
+          "nextHop": "198.51.100.1",
+          "label": "ISP has a route to 192.0.2.0/24 via 198.51.100.1"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "title": "Reach the internet",
+      "description": "PC1 must reach the web server and any other address behind the ISP router, using only the default route.",
+      "hints": [
+        "If one address works and another does not, check that you did not write a route for a single network only."
+      ],
+      "criteria": [
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "203.0.113.10",
+          "label": "PC1 reaches the web server (203.0.113.10)"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "203.0.113.1",
+          "label": "PC1 reaches the ISP router (203.0.113.1)"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "WEB",
+          "address": "192.0.2.11",
+          "label": "The web server reaches PC1 (192.0.2.11)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,228 @@
+{
+  "formatVersion": 1,
+  "id": "ospf-two-areas",
+  "title": "OSPF with two areas",
+  "level": "advanced",
+  "minutes": 35,
+  "summary": "Split an OSPF network into a backbone and a second area joined by a border router, then reach one LAN from the other.",
+  "objectives": [
+    "Place links in the backbone (area 0) and in a second area",
+    "Make the middle router an area border router by giving it a link in each area",
+    "Form neighbours inside each area",
+    "Learn routes across the area boundary and ping end to end"
+  ],
+  "setup": {
+    "devices": [
+      {
+        "name": "R1",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "R2",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "R3",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "PC1",
+        "model": "PC"
+      },
+      {
+        "name": "PC3",
+        "model": "PC"
+      }
+    ],
+    "links": [
+      {
+        "from": "R1:GE0/0/0",
+        "to": "R2:GE0/0/0"
+      },
+      {
+        "from": "R2:GE0/0/1",
+        "to": "R3:GE0/0/0"
+      },
+      {
+        "from": "R1:GE0/0/1",
+        "to": "PC1:eth0"
+      },
+      {
+        "from": "R3:GE0/0/1",
+        "to": "PC3:eth0"
+      }
+    ],
+    "ports": [
+      {
+        "device": "R1",
+        "port": "GE0/0/0",
+        "ip": "198.51.100.1",
+        "prefix": 30
+      },
+      {
+        "device": "R2",
+        "port": "GE0/0/0",
+        "ip": "198.51.100.2",
+        "prefix": 30
+      },
+      {
+        "device": "R2",
+        "port": "GE0/0/1",
+        "ip": "198.51.100.5",
+        "prefix": 30
+      },
+      {
+        "device": "R3",
+        "port": "GE0/0/0",
+        "ip": "198.51.100.6",
+        "prefix": 30
+      },
+      {
+        "device": "R1",
+        "port": "GE0/0/1",
+        "ip": "192.0.2.1",
+        "prefix": 25
+      },
+      {
+        "device": "R3",
+        "port": "GE0/0/1",
+        "ip": "203.0.113.1",
+        "prefix": 25
+      },
+      {
+        "device": "PC1",
+        "port": "eth0",
+        "ip": "192.0.2.11",
+        "prefix": 25,
+        "gateway": "192.0.2.1"
+      },
+      {
+        "device": "PC3",
+        "port": "eth0",
+        "ip": "203.0.113.11",
+        "prefix": 25,
+        "gateway": "203.0.113.1"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "start-ospf",
+      "title": "Start OSPF with unique router IDs",
+      "description": "Start OSPF process 1 on all three routers with router IDs 1.1.1.1 (R1), 2.2.2.2 (R2) and 3.3.3.3 (R3).",
+      "hints": [
+        "Two routers with the same router ID will not become neighbours.",
+        "Example on R1: system-view, then ospf 1 router-id 1.1.1.1"
+      ],
+      "criteria": [
+        {
+          "type": "ospf-enabled",
+          "device": "R1",
+          "label": "OSPF is running on R1"
+        },
+        {
+          "type": "ospf-enabled",
+          "device": "R2",
+          "label": "OSPF is running on R2"
+        },
+        {
+          "type": "ospf-enabled",
+          "device": "R3",
+          "label": "OSPF is running on R3"
+        }
+      ]
+    },
+    {
+      "id": "backbone",
+      "title": "Build the backbone (area 0)",
+      "description": "The link between R1 and R2 (198.51.100.0/30) and the R1 LAN (192.0.2.0/25) belong to area 0. Advertise them on R1, and the link on R2.",
+      "hints": [
+        "Both ends of a link must put it in the same area, or the routers will not become neighbours.",
+        "A network statement ends with a wildcard mask: 0.0.0.3 for a /30, 0.0.0.127 for a /25.",
+        "Example on R1: ospf 1 area 0 network 198.51.100.0 0.0.0.3 and ospf 1 area 0 network 192.0.2.0 0.0.0.127. On R2: ospf 1 area 0 network 198.51.100.0 0.0.0.3"
+      ],
+      "criteria": [
+        {
+          "type": "ospf-adjacency",
+          "a": "R1",
+          "b": "R2",
+          "label": "R1 and R2 are OSPF neighbours"
+        }
+      ]
+    },
+    {
+      "id": "second-area",
+      "title": "Add area 1 behind the border router",
+      "description": "The link between R2 and R3 (198.51.100.4/30) and the R3 LAN (203.0.113.0/25) belong to area 1. R2 now has one link in area 0 and one in area 1: it is the area border router.",
+      "hints": [
+        "Use area 1 in the network statements for 198.51.100.4/30 on both R2 and R3.",
+        "Example on R2: ospf 1 area 1 network 198.51.100.4 0.0.0.3. On R3: ospf 1 area 1 network 198.51.100.4 0.0.0.3 and ospf 1 area 1 network 203.0.113.0 0.0.0.127"
+      ],
+      "criteria": [
+        {
+          "type": "ospf-adjacency",
+          "a": "R2",
+          "b": "R3",
+          "label": "R2 and R3 are OSPF neighbours"
+        }
+      ]
+    },
+    {
+      "id": "routes-across-areas",
+      "title": "Learn routes across the areas",
+      "description": "Routes from area 1 must reach the backbone and the other way round: R1 learns the area 1 networks and R3 learns the area 0 networks.",
+      "hints": [
+        "Areas that do not touch area 0 do not exchange routes. Check that the link to R1 is in area 0 on both routers.",
+        "If a LAN is missing, its network statement is probably missing on the router that owns it."
+      ],
+      "criteria": [
+        {
+          "type": "ospf-route",
+          "device": "R1",
+          "prefix": "198.51.100.4/30",
+          "label": "R1 learns the R2-R3 link 198.51.100.4/30"
+        },
+        {
+          "type": "ospf-route",
+          "device": "R1",
+          "prefix": "203.0.113.0/25",
+          "label": "R1 learns the R3 LAN 203.0.113.0/25"
+        },
+        {
+          "type": "ospf-route",
+          "device": "R3",
+          "prefix": "198.51.100.0/30",
+          "label": "R3 learns the R1-R2 link 198.51.100.0/30"
+        },
+        {
+          "type": "ospf-route",
+          "device": "R3",
+          "prefix": "192.0.2.0/25",
+          "label": "R3 learns the R1 LAN 192.0.2.0/25"
+        }
+      ]
+    },
+    {
+      "id": "end-to-end",
+      "title": "Ping from LAN to LAN",
+      "description": "OSPF routes are now used for forwarding. PC1 and PC3 must reach each other.",
+      "hints": [
+        "Both directions must work: the reply needs a route back too."
+      ],
+      "criteria": [
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "203.0.113.11",
+          "label": "PC1 reaches PC3 (203.0.113.11)"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "PC3",
+          "address": "192.0.2.11",
+          "label": "PC3 reaches PC1 (192.0.2.11)"
+        }
+      ]
+    }
+  ]
+}

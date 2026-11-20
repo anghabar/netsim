@@ -120,6 +120,21 @@ export function evaluateCriterion(criterion: Criterion, view: NetworkView): Crit
               : `${d.hostname} cannot reach ${criterion.address} (request or reply is lost).`,
           );
     }
+    case 'service-reachable': {
+      const d = named(criterion.from);
+      if (!d) return miss(criterion, `${criterion.from} was not found.`);
+      const service = { protocol: criterion.protocol, port: criterion.port };
+      const reachable = view.ipReachable(d, criterion.address, service);
+      const what = `${criterion.protocol.toUpperCase()} port ${criterion.port} on ${criterion.address}`;
+      return reachable === criterion.expected
+        ? pass(criterion)
+        : miss(
+            criterion,
+            reachable
+              ? `${d.hostname} can reach ${what}, but should not.`
+              : `${d.hostname} cannot reach ${what} (request or reply is lost).`,
+          );
+    }
     case 'vlanif-address': {
       const d = named(criterion.device);
       if (!d) return miss(criterion, `${criterion.device} was not found.`);

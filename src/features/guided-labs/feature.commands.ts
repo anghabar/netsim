@@ -8,7 +8,7 @@ import { PortTrunkAllowVlanCommand } from '../../store/slices/cli/commands/inter
 import { PortfastCommand } from '../../store/slices/cli/commands/interface/PortfastCommand';
 import { StpCommand } from '../../store/slices/cli/commands/network/StpCommand';
 import { AclRuleDeleteCommand } from '../../store/slices/cli/commands/system/AclCommand';
-import { AclRuleAddByPortName, IpRouteStaticChecked } from './cli/LabFriendlyCommands';
+import { AclRuleAddByPortName, IpRouteStaticChecked, UndoIpRouteStatic } from './cli/LabFriendlyCommands';
 import { OspfConfigCommand } from './cli/OspfConfigCommand';
 
 /**
@@ -28,6 +28,7 @@ export const featureCommands: readonly ICommand[] = [
   new PortSecurityCommand(),
   new EthTrunkMemberCommand(),
   new IpRouteStaticChecked(),
+  new UndoIpRouteStatic(),
   new AclRuleAddByPortName(),
   new AclRuleDeleteCommand(),
   new OspfConfigCommand(),

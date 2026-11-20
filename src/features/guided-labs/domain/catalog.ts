@@ -72,6 +72,34 @@ export const LAB_LISTINGS: readonly LabListing[] = [
     minutes: 25,
     summary: 'Bundle two parallel links between two switches into one logical link using LACP.',
   },
+  {
+    id: 'ospf-two-areas',
+    title: 'OSPF with two areas',
+    level: 'advanced',
+    minutes: 35,
+    summary: 'Split an OSPF network into a backbone and a second area joined by a border router, then reach one LAN from the other.',
+  },
+  {
+    id: 'default-route',
+    title: 'Default route to the internet',
+    level: 'beginner',
+    minutes: 20,
+    summary: 'Send everything that is not local to an upstream router with one default route, and give that router a way back.',
+  },
+  {
+    id: 'fix-the-broken-network',
+    title: 'Troubleshooting: fix a broken network',
+    level: 'intermediate',
+    minutes: 30,
+    summary: 'A workstation cannot reach a server. Find the two faults (a trunk that drops a VLAN and a wrong static route) and repair them.',
+  },
+  {
+    id: 'acl-allow-web-only',
+    title: 'Access list: allow only web traffic',
+    level: 'advanced',
+    minutes: 30,
+    summary: 'Let a workstation reach a server on one service only, by combining a permit rule and a deny rule in the right order.',
+  },
 ];
 
 export type LabLoadError = 'unknown-lab' | 'fetch-failed' | 'too-large' | 'invalid-json' | 'invalid-lab';

@@ -1,4 +1,4 @@
-import type { CommandContext, CommandResult } from '../../../store/slices/cli/commands/base/Command';
+import { Command, type CommandContext, type CommandResult } from '../../../store/slices/cli/commands/base/Command';
 import { AclRuleAddCommand } from '../../../store/slices/cli/commands/system/AclCommand';
 import { IpRouteStaticCommand } from '../../../store/slices/cli/commands/system/IpRouteStaticCommand';
 import { parseIpv4, maskToPrefix } from '../../../utils/ipv4';
@@ -10,6 +10,10 @@ import { canonicalPortName } from '../domain/network';
  * the addresses before the route is stored.
  */
 export class IpRouteStaticChecked extends IpRouteStaticCommand {
+  static prefixOfText(text: string): number | null {
+    return IpRouteStaticChecked.prefixOf(text);
+  }
+
   private static prefixOf(text: string): number | null {
     if (text.includes('.')) return maskToPrefix(text);
     const n = Number(text);
@@ -61,5 +65,46 @@ export class AclRuleAddByPortName extends AclRuleAddCommand {
     args[5] = port.id;
     const result = super.execute({ ...context, args });
     return { ...result, output: result.output.map((line) => line.split(port.id).join(port.name)) };
+  }
+}
+
+/**
+ * `undo ip route-static <network> <mask> [<next-hop>]`: removes static routes.
+ * The command library has no way to delete a route, so a wrong route could not
+ * be fixed. Without a next hop every static route to that network is removed.
+ */
+export class UndoIpRouteStatic extends Command {
+  readonly name = 'undo ip route-static';
+  readonly description = 'Delete a static route';
+  readonly vendor = null;
+  readonly requiredView = ['system-view'];
+
+  canHandle(context: CommandContext): boolean {
+    const { args } = context;
+    return args[0]?.toLowerCase() === 'undo' && args[1]?.toLowerCase() === 'ip' && args[2]?.toLowerCase() === 'route-static';
+  }
+
+  validate(context: CommandContext): { valid: boolean; error?: string } {
+    const base = super.validate(context);
+    if (!base.valid) return base;
+    const [, , , dest, mask, hop] = context.args;
+    const usage = 'Error: undo ip route-static <network> <mask or prefix length> [<next-hop>]';
+    if (dest === undefined || mask === undefined || context.args.length > 6) return { valid: false, error: usage };
+    if (parseIpv4(dest) === null || IpRouteStaticChecked.prefixOfText(mask) === null) return { valid: false, error: usage };
+    if (hop !== undefined && parseIpv4(hop) === null) return { valid: false, error: usage };
+    return { valid: true };
+  }
+
+  execute(context: CommandContext): CommandResult {
+    const { device, args } = context;
+    const [, , , dest, mask, hop] = args;
+    const prefix = IpRouteStaticChecked.prefixOfText(mask);
+    const before = device.routingTable ?? [];
+    const after = before.filter(
+      (r) => !(r.proto === 'Static' && r.destination === dest && r.mask === prefix && (hop === undefined || r.nextHop === hop)),
+    );
+    if (after.length === before.length) return this.createError('The route does not exist.');
+    device.routingTable = after;
+    return this.createOutput(['Info: Succeeded.'], device);
   }
 }

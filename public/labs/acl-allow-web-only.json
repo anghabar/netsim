@@ -1,0 +1,131 @@
+{
+  "formatVersion": 1,
+  "id": "acl-allow-web-only",
+  "title": "Access list: allow only web traffic",
+  "level": "advanced",
+  "minutes": 30,
+  "summary": "Let a workstation reach a server on one service only, by combining a permit rule and a deny rule in the right order.",
+  "objectives": [
+    "Match a protocol and a destination port in an access list rule",
+    "Combine a permit rule and a deny rule and put them in the right order",
+    "Check that the allowed service still works and everything else is blocked"
+  ],
+  "setup": {
+    "devices": [
+      {
+        "name": "R1",
+        "model": "Huawei-AR617"
+      },
+      {
+        "name": "PC1",
+        "model": "PC"
+      },
+      {
+        "name": "SRV",
+        "model": "PC"
+      }
+    ],
+    "links": [
+      {
+        "from": "R1:GE0/0/1",
+        "to": "PC1:eth0"
+      },
+      {
+        "from": "R1:GE0/0/2",
+        "to": "SRV:eth0"
+      }
+    ],
+    "ports": [
+      {
+        "device": "R1",
+        "port": "GE0/0/1",
+        "ip": "192.0.2.1",
+        "prefix": 24
+      },
+      {
+        "device": "R1",
+        "port": "GE0/0/2",
+        "ip": "198.51.100.1",
+        "prefix": 24
+      },
+      {
+        "device": "PC1",
+        "port": "eth0",
+        "ip": "192.0.2.11",
+        "prefix": 24,
+        "gateway": "192.0.2.1"
+      },
+      {
+        "device": "SRV",
+        "port": "eth0",
+        "ip": "198.51.100.10",
+        "prefix": 24,
+        "gateway": "198.51.100.1"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "block-the-rest",
+      "title": "Block everything except the web service",
+      "description": "PC1 (192.0.2.11) may only use the web service (TCP port 80) on the server 198.51.100.10. Every other service, and ping, must be blocked. Apply the rules on R1, on the port where the workstation traffic arrives.",
+      "hints": [
+        "Rules are matched in order and the first match wins. Traffic that matches no rule is allowed.",
+        "So you need two rules: first a permit for TCP port 80, then a deny for everything else to that server.",
+        "Example on R1: acl rule add WEB-OK permit GE0/0/1 in protocol=tcp dstport=80 src=192.0.2.0/24 dst=198.51.100.10/32 and then acl rule add DENY-REST deny GE0/0/1 in src=192.0.2.0/24 dst=198.51.100.10/32"
+      ],
+      "criteria": [
+        {
+          "type": "service-reachable",
+          "from": "PC1",
+          "address": "198.51.100.10",
+          "protocol": "tcp",
+          "port": 22,
+          "expected": false,
+          "label": "PC1 cannot open TCP port 22 (remote login)"
+        },
+        {
+          "type": "service-reachable",
+          "from": "PC1",
+          "address": "198.51.100.10",
+          "protocol": "tcp",
+          "port": 443,
+          "expected": false,
+          "label": "PC1 cannot open TCP port 443"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "198.51.100.10",
+          "expected": false,
+          "label": "PC1 cannot ping the server (198.51.100.10)"
+        }
+      ]
+    },
+    {
+      "id": "keep-web",
+      "title": "Keep the web service working",
+      "description": "The web service must still work, and PC1 must still reach its own gateway.",
+      "hints": [
+        "If the web service is blocked, check the order of the rules: a deny placed before the permit matches first.",
+        "A deny rule without a destination also blocks the gateway."
+      ],
+      "criteria": [
+        {
+          "type": "service-reachable",
+          "from": "PC1",
+          "address": "198.51.100.10",
+          "protocol": "tcp",
+          "port": 80,
+          "label": "PC1 reaches the web service (TCP port 80)"
+        },
+        {
+          "type": "ip-reachable",
+          "from": "PC1",
+          "address": "192.0.2.1",
+          "label": "PC1 reaches its gateway (192.0.2.1)"
+        }
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import type { NetworkCable, NetworkDevice, NetworkPort } from '../../../types/NetworkTypes';
 import { isRecord } from '../../../utils/guards';
 import { networkOf, parseIpv4 } from '../../../utils/ipv4';
-import { createIpReachability } from './l3';
+import { createIpReachability, type OspfRoute } from './l3';
 
 /**
  * Derives protocol state (spanning tree, VLAN reachability, OSPF adjacencies and
@@ -29,7 +29,7 @@ export interface NetworkView {
   /** Prefixes ("198.51.100.0/24") a router learns from other routers, not its own. */
   ospfLearned: (device: NetworkDevice) => ReadonlySet<string>;
   /** A ping from the device to the address succeeds, request and reply, honouring routes and access lists. */
-  ipReachable: (from: NetworkDevice, address: string) => boolean;
+  ipReachable: (from: NetworkDevice, address: string, service?: { protocol: string; port: number }) => boolean;
   /** Number of links of an Eth-Trunk on `device` that are bundled with a compatible Eth-Trunk on `peer`. */
   trunkLinks: (device: NetworkDevice, trunkId: string, peer: NetworkDevice) => number;
 }
@@ -262,6 +262,7 @@ export function buildNetworkView(devices: readonly NetworkDevice[], cables: read
     return isRecord(t) && typeof t[field] === 'number' ? t[field] : fallback;
   };
   const adjacency = new Map<string, Set<string>>(routers.map((d) => [d.id, new Set<string>()]));
+  const adjacentLinks: Array<Link & { area: string }> = [];
   for (const l of links) {
     const pa = partsOf.get(l.x.id)?.find((p) => p.port.id === l.px.id);
     const pb = partsOf.get(l.y.id)?.find((p) => p.port.id === l.py.id);
@@ -271,30 +272,86 @@ export function buildNetworkView(devices: readonly NetworkDevice[], cables: read
     if (timer(l.x, 'dead', DEFAULT_DEAD) !== timer(l.y, 'dead', DEFAULT_DEAD)) continue;
     adjacency.get(l.x.id)?.add(l.y.id);
     adjacency.get(l.y.id)?.add(l.x.id);
+    adjacentLinks.push({ ...l, area: pa.area });
   }
-  const componentOf = (d: NetworkDevice): Set<string> => {
-    const found = new Set<string>([d.id]);
-    const queue = [d.id];
-    while (queue.length > 0) {
-      const id = queue.shift() as string;
-      for (const next of adjacency.get(id) ?? []) {
-        if (!found.has(next)) {
-          found.add(next);
-          queue.push(next);
+  // Routes by router and area: prefix -> hops and the neighbour address to send to.
+  // Routers in one area share what they know; a router with an interface in area 0
+  // (an area border router) passes routes between area 0 and its other areas. Areas
+  // that do not touch area 0 never exchange routes.
+  interface AreaRoute {
+    hops: number;
+    nextHop: string | null;
+  }
+  const tables = new Map<string, Map<string, Map<string, AreaRoute>>>();
+  for (const d of routers) {
+    const byArea = new Map<string, Map<string, AreaRoute>>();
+    for (const p of partsOf.get(d.id) ?? []) {
+      const table = byArea.get(p.area) ?? new Map<string, AreaRoute>();
+      table.set(p.cidr, { hops: 0, nextHop: null });
+      byArea.set(p.area, table);
+    }
+    tables.set(d.id, byArea);
+  }
+  const offer = (into: Map<string, AreaRoute>, cidr: string, hops: number, nextHop: string | null): boolean => {
+    const known = into.get(cidr);
+    if (known !== undefined && known.hops <= hops) return false;
+    into.set(cidr, { hops, nextHop });
+    return true;
+  };
+  const areaTable = (d: NetworkDevice, area: string): Map<string, AreaRoute> => {
+    const byArea = tables.get(d.id) as Map<string, Map<string, AreaRoute>>;
+    const table = byArea.get(area) ?? new Map<string, AreaRoute>();
+    byArea.set(area, table);
+    return table;
+  };
+  for (let round = 0; round <= routers.length * 2 + 2; round += 1) {
+    let changed = false;
+    for (const l of adjacentLinks) {
+      const pairs: Array<[NetworkDevice, NetworkDevice, NetworkPort]> = [
+        [l.x, l.y, l.py],
+        [l.y, l.x, l.px],
+      ];
+      for (const [receiver, sender, senderPort] of pairs) {
+        const address = senderPort.config.ipAddress ?? null;
+        for (const [cidr, route] of [...areaTable(sender, l.area)]) {
+          if (offer(areaTable(receiver, l.area), cidr, route.hops + 1, address)) changed = true;
         }
       }
     }
-    return found;
-  };
-  const ospfLearned = (d: NetworkDevice): ReadonlySet<string> => {
-    const own = new Set((partsOf.get(d.id) ?? []).map((p) => p.cidr));
-    const learned = new Set<string>();
-    for (const id of componentOf(d)) {
-      if (id === d.id) continue;
-      for (const p of partsOf.get(id) ?? []) if (!own.has(p.cidr)) learned.add(p.cidr);
+    for (const d of routers) {
+      const byArea = tables.get(d.id) as Map<string, Map<string, AreaRoute>>;
+      if (!byArea.has('0')) continue;
+      for (const area of [...byArea.keys()]) {
+        if (area === '0') continue;
+        for (const [cidr, route] of [...areaTable(d, '0')]) {
+          if (offer(areaTable(d, area), cidr, route.hops, route.nextHop)) changed = true;
+        }
+        for (const [cidr, route] of [...areaTable(d, area)]) {
+          if (offer(areaTable(d, '0'), cidr, route.hops, route.nextHop)) changed = true;
+        }
+      }
     }
-    return learned;
+    if (!changed) break;
+  }
+  const ospfRoutes = (d: NetworkDevice): OspfRoute[] => {
+    const own = new Set((partsOf.get(d.id) ?? []).map((p) => p.cidr));
+    const best = new Map<string, { hops: number; nextHop: string }>();
+    for (const table of tables.get(d.id)?.values() ?? []) {
+      for (const [cidr, route] of table) {
+        if (route.nextHop === null || own.has(cidr)) continue;
+        const known = best.get(cidr);
+        if (known === undefined || route.hops < known.hops) best.set(cidr, { hops: route.hops, nextHop: route.nextHop });
+      }
+    }
+    const out: OspfRoute[] = [];
+    for (const [cidr, route] of best) {
+      const [net, length] = cidr.split('/');
+      out.push({ net, prefix: Number(length), nextHop: route.nextHop });
+    }
+    return out;
   };
+  const ospfLearned = (d: NetworkDevice): ReadonlySet<string> =>
+    new Set(ospfRoutes(d).map((r) => `${r.net}/${r.prefix}`));
 
   // ---- Link aggregation ----------------------------------------------------
   const modesCompatible = (a: string, b: string): boolean => {
@@ -319,7 +376,7 @@ export function buildNetworkView(devices: readonly NetworkDevice[], cables: read
   };
 
   return {
-    ipReachable: createIpReachability({ devices, peerOf, l2Reachable, isUp }),
+    ipReachable: createIpReachability({ devices, peerOf, l2Reachable, isUp, ospfRoutes }),
     trunkLinks,
     deviceByName: (name) => byName.get(name),
     portByName: (device, name) => {

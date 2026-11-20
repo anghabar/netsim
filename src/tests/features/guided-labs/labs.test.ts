@@ -139,6 +139,6 @@ describe('lab 3: single-area OSPF', () => {
 
 describe('lab files', () => {
   it('lists every lab file', () => {
-    expect(LAB_FILE_IDS).toHaveLength(8);
+    expect(LAB_FILE_IDS).toHaveLength(12);
   });
 });
