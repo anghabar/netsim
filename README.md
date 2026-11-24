@@ -16,7 +16,7 @@
     Zero virtualization. Zero latency. 100% Browser-native.
   </p>
 
-  [**Releases**](https://github.com/anghabar/netsim/releases) • [**Report Bug**](https://github.com/anghabar/netsim/issues) • [**Request Feature**](https://github.com/anghabar/netsim/issues)
+  [**Try it in your browser**](https://app.netsim.dev) • [**Releases**](https://github.com/anghabar/netsim/releases) • [**Report Bug**](https://github.com/anghabar/netsim/issues) • [**Request Feature**](https://github.com/anghabar/netsim/issues)
 </div>
 
 ---
@@ -26,6 +26,8 @@
 **NetSim Community Edition** is an open-source network simulator that runs entirely in your browser. Starting with **v1.1.0**, the core simulation logic has been migrated from TypeScript to **Rust/WebAssembly** to achieve near-native execution speeds and deterministic protocol behavior.
 
 It provides a high-performance, client-side network simulation environment that runs entirely in your browser, bypassing the need for heavy VMs or backend servers.
+
+**Try it in your browser: https://app.netsim.dev** (hosted build of this repository, nothing to install).
 
 <div align="center">
   <img src="docs/images/netsim-dashboard.png" alt="NetSim Dashboard" width="100%" style="border-radius: 8px; border: 1px solid #333;" />
@@ -59,6 +61,10 @@ It provides a high-performance, client-side network simulation environment that 
 * **Node.js** 20.19+ or 22.12+ (required by the Vite 7 toolchain) with npm.
 * **Rust** stable toolchain, installed with [rustup](https://rustup.rs/).
 * **[wasm-pack](https://rustwasm.github.io/wasm-pack/installer/)**, used to compile the core to WebAssembly.
+
+### Use it without installing anything
+
+Open **https://app.netsim.dev** in a current browser. It is the same application as this repository, served as static files; everything runs on your machine.
 
 ### Run it locally
 
